@@ -120,6 +120,11 @@ export function runtimeMetadataForSyntheticUserMessageSource(
   if (source === "goal-continuation") {
     return systemReminderRuntimeMetadata("target_continuation");
   }
+  // fork：quota-resume 载体按 legacy synthetic 落史（纯 user 消息、不包 reminder），
+  // 与冷恢复 metadataFromSyntheticTextPart 对未知 source 的兜底一致。
+  if (source === "quota-resume") {
+    return legacySyntheticRuntimeMetadata();
+  }
   return systemReminderRuntimeMetadata("rewind_notice");
 }
 

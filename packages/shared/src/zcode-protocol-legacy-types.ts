@@ -29,6 +29,8 @@ export const zcodeSyntheticUserMessageSourceSchema = z.enum([
   // 中枢直接启动工作流的启动轮 source；与 contracts 的
   // SYNTHETIC_USER_MESSAGE_SOURCES 保持同一词表，否则 v3 mapper 收窄该 source 会 tsc 失败。
   "workflow_launch",
+  // fork：配额中断续跑（resumeTurn）的 model-only 载体来源；与 contracts 同步。
+  "quota-resume",
   "shared_context",
 ]);
 export const zcodeWorkspaceRefSchema = z

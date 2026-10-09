@@ -63,6 +63,8 @@ export const SYNTHETIC_USER_MESSAGE_SOURCES = [
   // 它虽是 synthetic（GUI 用元数据画启动卡而非显示文本），语义上却是用户真实动作：
   // origin=real_user、kind=user_prompt，与其余「运行时注入的提醒」类来源不同档。
   "workflow_launch",
+  // fork：配额中断会话续跑（resumeTurn）的 model-only 载体来源。
+  "quota-resume",
   "shared_context",
 ] as const;
 export type SyntheticUserMessageSource = (typeof SYNTHETIC_USER_MESSAGE_SOURCES)[number];

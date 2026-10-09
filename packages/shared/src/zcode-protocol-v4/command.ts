@@ -159,6 +159,10 @@ export const commandPayloadSchemas = {
     workspaceMode: z.enum(["preserve", "rewind"]).optional(),
   }),
   retryTurn: z.object({ target: conversationRowTargetSchema }),
+  // fork resumeTurn：配额中断会话的续跑命令。无目标、无结果变体（bare ACK）；
+  // guard 拒绝以稳定 reasonCode 回 ACK（guard.resumeNotIdle / resumeNotQuotaFailed /
+  // resumeNoFailedTurn）。CAS 与 retryTurn 同类。
+  resumeTurn: z.object({}).strict(),
   setAssistantFeedback: z.object({
     target: conversationRowTargetSchema,
     feedback: z.enum(["like", "dislike"]).nullable(),
@@ -298,6 +302,7 @@ export const COMMANDS_REQUIRING_BASE_REVISION: ReadonlySet<CommandType> = new Se
   "forkAssistant",
   "editUserQuery",
   "retryTurn",
+  "resumeTurn",
   "setAssistantFeedback",
   "sendQueuedNow",
   "editQueueItem",
