@@ -38,6 +38,33 @@ const TRANSIENT_ERROR_REASONS = new Set([
   "network_error",
   "timeout",
 ]);
+// 终态配额类业务码（与 adapters/failure-provider-business-codes 的 TERMINAL 映射同源）。
+// 该集合只是 belt-and-braces：错误包装链丢失 retryable 标志时仍按 providerCode 否决重试。
+// 3008–3010 并发上限不在此列——其重试语义由 Start-Plan admission retry 专门接管。
+const TERMINAL_QUOTA_PROVIDER_CODES = new Set([
+  "1005",
+  "1308",
+  "1309",
+  "1310",
+  "1311",
+  "1313",
+  "1314",
+  "1315",
+  "1316",
+  "1317",
+  "1318",
+  "1319",
+  "1320",
+  "1321",
+  "insufficient_quota",
+  "credit_balance_exhausted",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+  "exceeded_current_quota_error",
+  "2056",
+  "20097",
+]);
 
 interface StreamRecoveryAttempt {
   maxRetries: number;
@@ -294,10 +321,18 @@ function findStartPlanBusyProviderCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function isRetryableStreamRecoveryFailure(error: unknown): boolean {
+export function isRetryableStreamRecoveryFailure(error: unknown): boolean {
   for (const record of walkErrorRecords(error)) {
-    if (record.retryable === true) return true;
     const context = asRecord(record.context);
+    // 终态优先否决：adapter 对配额类业务码统一标 retryable:false，但错误 code 仍被
+    // 归一化成 model_rate_limited（TRANSIENT_ERROR_CODES 成员）。原先只有正向匹配，
+    // 这些终态失败会被当成瞬时抖动重放最多 10 次，且带 tool 分支每轮都提交一份
+    // 合成 interrupted 结果污染后续上下文。显式不可重试标志与终态配额码必须
+    // 先于正向匹配返回 false。
+    if (record.retryable === false || context?.retryable === false) return false;
+    const providerCode = stringValue(record.providerCode) ?? stringValue(context?.providerCode);
+    if (providerCode && TERMINAL_QUOTA_PROVIDER_CODES.has(providerCode)) return false;
+    if (record.retryable === true) return true;
     if (context?.retryable === true) return true;
     const code = stringValue(record.code) ?? stringValue(context?.code);
     if (code && TRANSIENT_ERROR_CODES.has(code)) return true;
