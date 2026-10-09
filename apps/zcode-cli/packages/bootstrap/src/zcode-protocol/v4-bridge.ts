@@ -408,7 +408,10 @@ export function isConversationInputAdmissionCommand(type: CommandEnvelope["type"
     type === "sendGoalCommand" ||
     type === "compact" ||
     type === "editUserQuery" ||
-    type === "retryTurn"
+    type === "retryTurn" ||
+    // fork resumeTurn：搭上输入准入（subagent 只读防护；admission 账本解析对无
+    // 载荷命令返回 null，不产生 ledger 记录）。
+    type === "resumeTurn"
   );
 }
 

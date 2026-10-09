@@ -186,6 +186,10 @@ export const commandPayloadSchemas = {
   retryTurn: z.object({ target: conversationRowTargetSchema }),
   // （2026-09-12）：原 setToolWidgetState / setSessionPluginUiState 已删除——插件 UI widgetState
   // 回退为宿主 renderer 内存保存，不再写 CLI 会话存储；模型可见信息改走 ui/update-model-context。
+  // fork resumeTurn：配额中断会话的续跑命令。无目标、无结果变体（bare ACK）；
+  // guard 拒绝以稳定 reasonCode 回 ACK（guard.resumeNotIdle / resumeNotQuotaFailed /
+  // resumeNoFailedTurn）。CAS 与 retryTurn 同类。
+  resumeTurn: z.object({}).strict(),
   setAssistantFeedback: z.object({
     target: conversationRowTargetSchema,
     feedback: z.enum(["like", "dislike"]).nullable(),
@@ -317,6 +321,7 @@ export const COMMANDS_REQUIRING_BASE_REVISION: ReadonlySet<CommandType> = new Se
   "forkAssistant",
   "editUserQuery",
   "retryTurn",
+  "resumeTurn",
   "setAssistantFeedback",
   "sendQueuedNow",
   "editQueueItem",
