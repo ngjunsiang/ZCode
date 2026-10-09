@@ -58,6 +58,7 @@ export function ConversationQuotaBanner({
   onUpgrade,
   onDismiss,
   onShown,
+  resume,
 }: {
   state: SessionQuotaBannerState;
   billingDiscountActive?: boolean;
@@ -66,6 +67,13 @@ export function ConversationQuotaBanner({
   onUpgrade?: () => void;
   onDismiss: () => void;
   onShown?: () => void;
+  /** fork resumeTurn：在场 ⇒ 横幅不可关闭（scenario 7：关闭不得掩盖 Resume 入口）。 */
+  resume?: {
+    enabled: boolean;
+    hint?: string | null;
+    pending?: boolean;
+    onResume: () => void;
+  };
 }) {
   const { intl, locale } = useZCodeIntl();
   const bannerRef = useRef<HTMLDivElement>(null);
@@ -121,6 +129,19 @@ export function ConversationQuotaBanner({
           <InfoIcon className="size-4 shrink-0" />
           <div className="min-w-0 break-words">{message}</div>
         </div>
+        {resume ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-auto shrink-0 gap-1.5 rounded-full"
+            disabled={!resume.enabled || resume.pending === true}
+            title={resume.enabled ? undefined : (resume.hint ?? undefined)}
+            onClick={resume.onResume}
+          >
+            {intl.formatMessage({ id: "chat.quota.action.resume" })}
+          </Button>
+        ) : null}
         {onUpgrade ? (
           <div className="inline-flex shrink-0 items-center gap-1">
             <CodingPlanEntryButton
@@ -150,7 +171,7 @@ export function ConversationQuotaBanner({
             ) : null}
           </div>
         ) : null}
-        {state.dismissible ? (
+        {state.dismissible && !resume ? (
           <Button
             type="button"
             variant="ghost"

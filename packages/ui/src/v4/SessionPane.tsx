@@ -338,6 +338,8 @@ import { useConversationProjection } from "@/v4/useConversationProjection.js";
 import { usePendingCommandRecovery } from "@/v4/usePendingCommandRecovery.js";
 import { useV4SessionQuotaBanner } from "@/v4/useV4SessionQuotaBanner.js";
 import { resolveMcpUnavailableNoticeInPartition } from "@/v4/mcpUnavailableBannerNotice.js";
+// fork resumeTurn：配额中断会话的续跑按钮派生状态。
+import { useQuotaResume } from "@/v4/useQuotaResume.js";
 import { shouldFocusTimelineAfterComposerSend } from "@/v4/promptScrollFocusPolicy.js";
 import {
   hasChatLoadingBlockingActiveWork,
@@ -4790,6 +4792,15 @@ export function SessionPane({
     [dispatchCommand, sessionId],
   );
 
+  // fork resumeTurn：CAS 命令，envelope 形状与 retryTurn 同型（无目标）。
+  const dispatchResumeTurn = useCallback((): Promise<CommandAck> => {
+    const current = snapshotRef.current;
+    if (!sessionId || current === null) {
+      return Promise.reject(new Error("resumeTurn 缺少当前 session 投影"));
+    }
+    return dispatchCommand("resumeTurn", {}, sessionId, current.revision, current.logEpoch);
+  }, [dispatchCommand, sessionId]);
+
   const handleRetry = useCallback(
     (target: ConversationRowTarget) => {
       void dispatchRetryTurn(target)
@@ -5765,6 +5776,16 @@ export function SessionPane({
     usageStatsService: baseWorkspaceServices.usageStatsService,
     mcpUnavailableNotice,
   });
+  // fork resumeTurn: detection + quota un-grey + dispatch derivation; pure
+  // derivation, no new persistent state.
+  const quotaResume = useQuotaResume({
+    sessionId: snapshot?.sessionId ?? sessionId,
+    snapshot: snapshot ?? null,
+    providerId: snapshot?.config.provider ?? null,
+    modelId: snapshot?.config.model ?? null,
+    usageStatsService: baseWorkspaceServices.usageStatsService,
+    onResume: dispatchResumeTurn,
+  });
   // Bug 根因：当前显示哪条错误与「关闭」归谁曾在两处分别判断——渲染按「未关闭」状态取横幅，关闭处理却按
   // 原始状态分支；用户关掉模型失效横幅后，后续投影错误横幅的关闭按钮会一直落到已关闭的那条上而失效。
   // 这里把显示与关闭动作在同一处派生，两者不可能再分叉。
@@ -6273,7 +6294,9 @@ export function SessionPane({
   // 若仍创建 composer，会让用户误以为可以直接向 child session 继续输入。
   const showQuotaBanner =
     quotaBanner.state.visible &&
-    !quotaBanner.dismissed &&
+    // fork resumeTurn: a resumable quota failure keeps the banner up even when
+    // dismissed, so the resume entry point stays reachable.
+    (!quotaBanner.dismissed || quotaResume !== null) &&
     (!projectedComposerError || quotaBanner.takesOverError || quotaBanner.state.blocksSubmit);
   const statusCapsules = !isDraft ? (
     <ConversationStatusPanel
@@ -6587,6 +6610,7 @@ export function SessionPane({
               : undefined
           }
           onDismiss={quotaBanner.dismiss}
+          resume={quotaResume ?? undefined}
         />
       ) : null}
       {runtimeExitBanner}
