@@ -6638,6 +6638,9 @@ const zhCN: Record<string, string> = {
   "chat.quota.action.switchModel": "切换模型",
   "chat.quota.action.switchProvider": "切换供应商",
   "chat.quota.action.refresh": "刷新额度",
+  // fork resumeTurn：配额中断会话的续跑入口。
+  "chat.quota.action.resume": "继续任务",
+  "chat.quota.resume.failed": "续跑失败，请重试。",
 
   // 权限请求
   "chat.permission.title": "需要权限",
