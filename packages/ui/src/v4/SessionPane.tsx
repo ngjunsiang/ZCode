@@ -231,6 +231,8 @@ import { useV4Conversation } from "@/v4/V4ConversationContext.js";
 import { useConversationProjection } from "@/v4/useConversationProjection.js";
 import { usePendingCommandRecovery } from "@/v4/usePendingCommandRecovery.js";
 import { useV4SessionQuotaBanner } from "@/v4/useV4SessionQuotaBanner.js";
+// fork resumeTurn：配额中断会话的续跑按钮派生状态。
+import { useQuotaResume } from "@/v4/useQuotaResume.js";
 import { resolveMcpUnavailableNotice } from "@/v4/mcpUnavailableBannerNotice.js";
 import { shouldFocusTimelineAfterComposerSend } from "@/v4/promptScrollFocusPolicy.js";
 import {
@@ -3100,6 +3102,15 @@ export function SessionPane({
     [dispatchCommand, sessionId],
   );
 
+  // fork resumeTurn：CAS 命令，envelope 形状与 retryTurn 同型（无目标）。
+  const dispatchResumeTurn = useCallback((): Promise<CommandAck> => {
+    const current = snapshotRef.current;
+    if (!sessionId || current === null) {
+      return Promise.reject(new Error("resumeTurn 缺少当前 session 投影"));
+    }
+    return dispatchCommand("resumeTurn", {}, sessionId, current.revision, current.logEpoch);
+  }, [dispatchCommand, sessionId]);
+
   const handleRetry = useCallback(
     (target: ConversationRowTarget) => {
       void dispatchRetryTurn(target)
@@ -3954,6 +3965,15 @@ export function SessionPane({
     usageStatsService: baseWorkspaceServices.usageStatsService,
     mcpUnavailableNotice,
   });
+  // fork resumeTurn：检测 + 额度 un-grey + 派发派生；纯派生，无新持久状态。
+  const quotaResume = useQuotaResume({
+    sessionId: snapshot?.sessionId ?? sessionId,
+    snapshot: snapshot ?? null,
+    providerId: snapshot?.config.provider ?? null,
+    modelId: snapshot?.config.model ?? null,
+    usageStatsService: baseWorkspaceServices.usageStatsService,
+    onResume: dispatchResumeTurn,
+  });
   const composerError =
     draftModelReadinessError ??
     sendSubmissionError ??
@@ -4493,7 +4513,7 @@ export function SessionPane({
   ) : (
     <>
       {quotaBanner.state.visible &&
-      !quotaBanner.dismissed &&
+      (!quotaBanner.dismissed || quotaResume !== null) &&
       (!projectedComposerError || quotaBanner.takesOverError || quotaBanner.state.blocksSubmit) ? (
         <ConversationQuotaBanner
           state={quotaBanner.state}
@@ -4505,6 +4525,7 @@ export function SessionPane({
               : undefined
           }
           onDismiss={quotaBanner.dismiss}
+          resume={quotaResume ?? undefined}
         />
       ) : null}
       {recoverableCommand ? (

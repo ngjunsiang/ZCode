@@ -5784,6 +5784,9 @@ const enUS: Record<string, string> = {
   "chat.quota.action.switchModel": "Switch model",
   "chat.quota.action.switchProvider": "Switch provider",
   "chat.quota.action.refresh": "Refresh quota",
+  // fork resumeTurn：配额中断会话的续跑入口。
+  "chat.quota.action.resume": "Resume",
+  "chat.quota.resume.failed": "Resume failed. Please try again.",
 
   // Permissions
   "chat.permission.title": "Permission required",
