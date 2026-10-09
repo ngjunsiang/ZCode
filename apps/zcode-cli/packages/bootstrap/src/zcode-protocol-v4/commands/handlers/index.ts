@@ -7,6 +7,8 @@ import { goalCompactHandlers } from "./goal-compact.js";
 import { interactionBackgroundHandlers } from "./interaction-background.js";
 import { modelConfigHandlers } from "./model-config.js";
 import { queueHandlers } from "./queue.js";
+// fork resumeTurn：配额中断会话续跑。
+import { resumeTurnHandlers } from "./resume-turn.js";
 import { sessionFlowHandlers } from "./session-flow.js";
 import { sessionMgmtHandlers } from "./session-mgmt.js";
 import { selectionSideSessionHandlers } from "./selection-side-session.js";
@@ -25,6 +27,7 @@ export const NATIVE_HANDLERS = {
   ...fileRewindHandlers,
   ...assistantFeedbackHandlers,
   ...highspeedMetricsHandlers,
+  ...resumeTurnHandlers,
 } as const;
 
 export type NativeCommandType = keyof typeof NATIVE_HANDLERS;
