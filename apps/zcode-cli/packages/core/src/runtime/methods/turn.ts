@@ -49,6 +49,8 @@ import type { PromptRuntimeCommand } from "../command-queue.js";
 import { enqueueCancellableRuntimeCommand } from "./runtime-command-submit.js";
 import { buildReferencedSessionContextReminderBody } from "../../session-context/read-session-context.js";
 import { runRegularTurnLoop } from "./turn-loop.js";
+// fork：配额续跑轮的尾部净化器（ADR-007/C1）。仅 inputSource === "quota-resume" 时调用。
+import { sanitizeQuotaResumeTurnTail } from "./quota-resume-tail-sanitizer.js";
 import {
   maybeStartDeferredSessionTitleGeneration,
   maybeStartSessionTitleGeneration,
@@ -659,6 +661,10 @@ export async function executeTurnCommand(
         };
 
         openGoalStateChangeReminderDeferral(activeTurn);
+        // fork：quota-resume 续跑请求前净化悬挂 tool_use（否则 provider 请求 400）。
+        if (options?.inputSource === "quota-resume") {
+          sanitizeQuotaResumeTurnTail(this, loopState);
+        }
         phaseStartedAt = startTurnPhase("regular_turn_loop");
         try {
           await runRegularTurnLoop.call(this, loopState);

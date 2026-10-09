@@ -73,6 +73,9 @@ function syntheticUserNoticeKind(source: SyntheticUserMessageSource): MessageSem
     case "plugin_reference":
     case "bot_topic_context":
       return "system_reminder";
+    // fork：配额续跑载体与 goal-continuation 同属 runtime 注入的 model-only 指令轮。
+    case "quota-resume":
+      return "system_reminder";
     case "rewind":
       return "rewind_notice";
     case "selection_side_chat":
