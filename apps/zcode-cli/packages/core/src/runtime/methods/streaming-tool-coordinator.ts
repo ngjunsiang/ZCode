@@ -21,6 +21,7 @@ import {
   emitStreamRecoveryRetryEvents,
   emitStreamRecoveryStarted,
   hasStreamRecoveryBudget,
+  isRetryableStreamRecoveryFailure,
   recoverPartialAssistantOutputFailure,
 } from "./streaming-recovery.js";
 import { executeToolCallsForModelStep } from "./turn-tools.js";
@@ -165,6 +166,53 @@ export function createStreamingToolCoordinator(
           state,
           turnAbortListener: abortOnTurnCancel,
         });
+      }
+      // fork/ADR-002 终态闸：配额耗尽等 retryable:false 业务失败曾在 tool 分支被无条件
+      // re-request（入口闸只有 abort+budget），最多 10 次注定失败的请求，且每轮都提交
+      // 一份合成 interrupted 结果污染后续上下文。修复：终态时仍按 warm-context parity
+      // 提交一次 assistant+toolCalls+合成结果（不留 dangling tool_use，冷恢复一致），
+      // 但不消费恢复预算、不发恢复事件，返回 false 让调用方走 abandon+persist 终态路径。
+      //（3.14.3 基线无上游 settlement helpers，此处为内联提交形态，与下方恢复路径同体。）
+      if (!isRetryableStreamRecoveryFailure(error)) {
+        abortController.abort();
+        const terminalToolCalls = Array.from(acceptedToolCalls.values());
+        const terminalSettledResults = await collectCompletedResults(handles, terminalToolCalls);
+        const terminalSettledResultById = new Map(
+          terminalSettledResults.map((result) => [result.toolCallId, result]),
+        );
+        const terminalStreamedToolResults = terminalToolCalls.map(
+          (toolCall) =>
+            terminalSettledResultById.get(toolCall.id as ToolCallId) ??
+            createSyntheticStreamedToolResult(
+              toolCall,
+              handles.has(toolCall.id) ? "unknown_execution_state" : "not_executed",
+            ),
+        );
+        state.modelResponse = "";
+        state.modelStepCount += 1;
+        recordModelHistoryRound(state);
+        state.toolCallCount += terminalStreamedToolResults.length;
+        // 与恢复路径一致：assistant tool-call 与随后 tool result 必须成对推进 request history。
+        commitTurnRequestEntries(runtime, state.turnRequestState, [
+          createRuntimeAssistantEntry("", terminalToolCalls, undefined, options.model),
+        ]);
+        state.turnMachine = new TurnMachineImpl(state.turnMachine.receiveModelResponse(""));
+        await executeToolCallsForModelStep.call(runtime, state, {
+          assistantCreatedAt,
+          assistantMessageId: options.assistantMessageId,
+          modelTraceContext: options.traceContext,
+          result: {
+            finishReason: "tool-calls",
+            providerMetadata: { recoveredFromStreamFailure: true },
+            text: "",
+            toolCalls: terminalToolCalls,
+            usage: {},
+          },
+          streamedToolResults: terminalStreamedToolResults,
+          toolCalls: terminalToolCalls,
+        });
+        state.turnAbortSignal.removeEventListener("abort", abortOnTurnCancel);
+        return false;
       }
       abortController.abort();
       const recoveryAttempt = beginStreamRecoveryAttempt(state);
