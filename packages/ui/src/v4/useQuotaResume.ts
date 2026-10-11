@@ -37,6 +37,8 @@ export interface QuotaResumeUiState {
   enabled: boolean;
   /** 灰置时的重置时刻提示（快照提供不了一个体Provider则可能为空）。 */
   hint: string | null;
+  /** fork Auto-Resume：下一个服务端桶边界（nextResetTime/periodEnd 最早者），供调度时刻用。 */
+  nextResetAt: number | null;
   pending: boolean;
   onResume: () => void;
 }
@@ -48,6 +50,8 @@ export function useQuotaResume(params: {
   modelId: string | null;
   usageStatsService?: IUsageStatsService;
   onResume: () => Promise<CommandAck>;
+  /** fork Auto-Resume：resumeTurn ACK accepted/duplicate 后回调（手动续跑成功 → 主动取消已调度自动化）。 */
+  onResumed?: () => void;
 }): QuotaResumeUiState | null {
   const { intl, locale } = useZCodeIntl();
   const detected = useMemo(
@@ -114,17 +118,21 @@ export function useQuotaResume(params: {
     return () => window.clearTimeout(timer);
   }, [detected, enabled, entitlement, modelBuckets, params.sessionId, snapshot]);
 
-  const hint = useMemo(() => {
-    if (enabled || modelBuckets.length === 0) return null;
-    const nextBoundary = modelBuckets
+  // 下一个未来桶边界：hint 与 Auto-Resume 调度时刻共用同一事实（服务端 nextResetTime 优先）。
+  const nextResetAt = useMemo(() => {
+    if (!snapshot) return null;
+    const nowMs = Date.now();
+    const boundary = modelBuckets
       .map((bucket) => bucket.nextResetTime ?? bucket.periodEnd)
-      .filter((value): value is number => typeof value === "number" && value > Date.now())
+      .filter((value): value is number => typeof value === "number" && value > nowMs)
       .sort((left, right) => left - right)[0];
-    if (nextBoundary === undefined) return null;
-    return (
-      formatQuotaResetTime({ locale, value: nextBoundary, format: "adaptive" }) ?? null
-    );
-  }, [enabled, locale, modelBuckets]);
+    return boundary ?? null;
+  }, [modelBuckets, snapshot]);
+
+  const hint = useMemo(() => {
+    if (enabled || nextResetAt === null) return null;
+    return formatQuotaResetTime({ locale, value: nextResetAt, format: "adaptive" }) ?? null;
+  }, [enabled, locale, nextResetAt]);
 
   const [pending, setPending] = useState(false);
   const onResume = useCallback(() => {
@@ -133,7 +141,11 @@ export function useQuotaResume(params: {
     void params
       .onResume()
       .then((ack) => {
-        if (ack.status === "accepted" || ack.status === "duplicate") return;
+        if (ack.status === "accepted" || ack.status === "duplicate") {
+          // fork Auto-Resume：手动续跑成功 → 主动取消该会话已调度的自动恢复（spec 规则 6）。
+          params.onResumed?.();
+          return;
+        }
         logger.warn("[v4-quota-resume] resumeTurn rejected", {
           reasonCode: ack.reasonCode,
           sessionId: params.sessionId,
@@ -158,6 +170,7 @@ export function useQuotaResume(params: {
     detected,
     enabled,
     hint,
+    nextResetAt,
     pending,
     onResume,
   };

@@ -285,6 +285,9 @@ import { usePendingCommandRecovery } from "@/v4/usePendingCommandRecovery.js";
 import { useV4SessionQuotaBanner } from "@/v4/useV4SessionQuotaBanner.js";
 // fork resumeTurn：配额中断会话的续跑按钮派生状态。
 import { useQuotaResume } from "@/v4/useQuotaResume.js";
+// fork Auto-Resume：额度重置时刻自动续跑（spec-auto-resume.md N6/U26）。
+import { useAutoResume, type AutoResumeUiState } from "@/v4/useAutoResume.js";
+import { formatQuotaResetTime } from "@/lib/codingPlanQuotaPresentation.js";
 import { resolveMcpUnavailableNotice } from "@/v4/mcpUnavailableBannerNotice.js";
 import { shouldFocusTimelineAfterComposerSend } from "@/v4/promptScrollFocusPolicy.js";
 import {
@@ -4768,6 +4771,8 @@ export function SessionPane({
     mcpUnavailableNotice,
   });
   // fork resumeTurn：检测 + 额度 un-grey + 派发派生；纯派生，无新持久状态。
+  // autoResumeRef 桥接声明顺序：onResumed 在 ACK 后才执行，读取 ref 即可拿到最新派生。
+  const autoResumeRef = useRef<AutoResumeUiState | null>(null);
   const quotaResume = useQuotaResume({
     sessionId: snapshot?.sessionId ?? sessionId,
     snapshot: snapshot ?? null,
@@ -4775,7 +4780,24 @@ export function SessionPane({
     modelId: snapshot?.config.model ?? null,
     usageStatsService: baseWorkspaceServices.usageStatsService,
     onResume: dispatchResumeTurn,
+    onResumed: () => {
+      // fork Auto-Resume 规则 6：手动续跑成功 → 主动取消该会话已调度的自动恢复。
+      void autoResumeRef.current?.cancelOnManualResume();
+    },
   });
+  // fork Auto-Resume：调度/取消/已调度派生；automation RPC 不可用（web-remote）时整体为 null。
+  const autoResume = useAutoResume({
+    sessionId: snapshot?.sessionId ?? sessionId,
+    sessionTitle: snapshot?.meta.title?.trim() ?? null,
+    workspacePath,
+    ...(workspaceIdentity ? { workspaceIdentity } : {}),
+    agentService: baseWorkspaceServices.zcodeAgentService,
+    resetAt: quotaResume?.nextResetAt ?? null,
+    enabled: quotaResume !== null,
+  });
+  useEffect(() => {
+    autoResumeRef.current = autoResume;
+  }, [autoResume]);
   const composerError =
     draftModelReadinessError ??
     sendSubmissionError ??
@@ -5342,6 +5364,34 @@ export function SessionPane({
           }
           onDismiss={quotaBanner.dismiss}
           resume={quotaResume ?? undefined}
+          autoResume={
+            // fork Auto-Resume 产品规则 1：仅在重置未确认（Resume 灰置）时在场；
+            // 重置确认后按钮消失、Resume 启用。检测未命中（quotaResume null）不渲染。
+            quotaResume !== null && !quotaResume.enabled && autoResume !== null
+              ? {
+                  scheduled: autoResume.scheduled !== null,
+                  canSchedule: autoResume.canSchedule,
+                  timeLabel:
+                    quotaResume.nextResetAt !== null
+                      ? (formatQuotaResetTime({
+                          locale,
+                          value: quotaResume.nextResetAt,
+                          format: "adaptive",
+                        }) ?? null)
+                      : null,
+                  scheduledTimeLabel:
+                    autoResume.scheduled?.nextRunAt != null
+                      ? (formatQuotaResetTime({
+                          locale,
+                          value: autoResume.scheduled.nextRunAt,
+                          format: "adaptive",
+                        }) ?? null)
+                      : null,
+                  onSchedule: autoResume.schedule,
+                  onCancel: autoResume.cancel,
+                }
+              : undefined
+          }
         />
       ) : null}
       {recoverableCommand ? (
