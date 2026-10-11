@@ -1,4 +1,5 @@
 import { createBotTopicAdmission } from "#src/zcode-agent/botTopicAdmission.js";
+import { AutomationRepo } from "#src/session/automationRepo.js";
 import {
   readBotGroupRuntimeSnapshot,
   waitBotGroupExecutionEnd,
@@ -213,6 +214,30 @@ type ZCodeTerminalStreamEvent =
 const GLM_PROVIDER: ZCodeProvider = ZCODE_AGENT_PROVIDER;
 const EMPTY_SLASH_COMMANDS: ZCodeSlashCommand[] = [];
 const logger = createServiceLogger("zcode-task-service");
+// fork Auto-Resume（spec-auto-resume.md U24）：会话归档/删除联动清理其 resumeTurn automation。
+// 与 host 域 cronAutomationRepo 同型：tasks-index 的调度状态归 scheduler/AutomationRepo 所有，
+// 这里是按 taskId 的定向清理入口；只清 resumeTurn 动作，prompt 动作的绑定不受会话生命周期影响。
+const resumeAutomationCleanupRepo = new AutomationRepo();
+async function cleanupResumeAutomationsForTasks(params: {
+  workspacePath: string;
+  workspaceIdentity?: string;
+  taskIds: string[];
+}): Promise<void> {
+  const workspaceKey = resolveWorkspaceKey(params);
+  for (const taskId of params.taskIds) {
+    try {
+      await resumeAutomationCleanupRepo.deleteResumeTurnByTargetTask(taskId, workspaceKey);
+    } catch (error) {
+      // 清理失败不阻断任务操作：残留行会在到点派发时因会话缺失进重臂/视界终态。
+      logger.warn("resumeTurn automation 会话生命周期清理失败", {
+        event: "automation.resume.lifecycle_cleanup.failed",
+        workspacePath: params.workspacePath,
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
 const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 const EXIT_PLAN_MODE_TOOL_NAME = "ExitPlanMode";
 const EXIT_PLAN_MODE_APPROVAL_QUESTION = "Review this implementation plan.";
@@ -2960,6 +2985,13 @@ export function createZCodeTaskServiceAdapter(
         { ...params, sessionId: params.taskId },
         { type: "delete" },
       );
+      // fork Auto-Resume：删除会话联动清理其 resumeTurn automation（spec 规则 6）。
+      // 3.16.2 起删除走 taskIndexSyncer.mutateSessionFacts（上游重写），清理钩子跟随新实现。
+      await cleanupResumeAutomationsForTasks({
+        workspacePath: params.workspacePath,
+        ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+        taskIds: [params.taskId],
+      });
     },
 
     async deleteArchivedTask(params): Promise<boolean> {
@@ -2970,6 +3002,8 @@ export function createZCodeTaskServiceAdapter(
         { type: "delete" },
       );
       emitWorkspaceTaskListChanged(params, meta, "task_deleted");
+      // fork Auto-Resume：删除会话联动清理其 resumeTurn automation（spec 规则 6）。
+      await cleanupResumeAutomationsForTasks({ ...params, taskIds: [params.taskId] });
       return true;
     },
 
@@ -3006,6 +3040,12 @@ export function createZCodeTaskServiceAdapter(
         }
       }
       if (result.deletedTaskIds.length > 0) {
+        // fork Auto-Resume：批量删除联动清理 resumeTurn automation（spec 规则 6）。
+        await cleanupResumeAutomationsForTasks({
+          workspacePath: params.workspacePath,
+          ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+          taskIds: result.deletedTaskIds,
+        });
         // 根因：循环调用单条接口会逐项广播，驱动 Host 与 UI 各自全量重读。
         // 批次完成只发一次 workspace 事件，仍使所有观察端换代 deleted membership，防止任务复活。
         emitWorkspaceTaskListChanged(params, undefined, "task_deleted");
@@ -3066,6 +3106,8 @@ export function createZCodeTaskServiceAdapter(
     async archiveTask(params): Promise<ZCodeTaskMeta> {
       const meta = await updateIndexedTaskState(params, { archived: true });
       emitWorkspaceTaskListChanged(params, meta, "task_archived");
+      // fork Auto-Resume：归档会话联动清理其 resumeTurn automation（spec 规则 6；unarchive 不复活）。
+      await cleanupResumeAutomationsForTasks({ ...params, taskIds: [params.taskId] });
       return meta;
     },
 

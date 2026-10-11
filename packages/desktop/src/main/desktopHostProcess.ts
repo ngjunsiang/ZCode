@@ -202,6 +202,9 @@ export function spawnHostProcess(
       sessionId?: string;
       error?: string;
       failureKind?: "transient" | "permanent";
+      // fork Auto-Resume：结算意图与重臂时刻（仅 resumeTurn 动作携带）。
+      settlement?: "completed" | "obsolete";
+      retryAtMs?: number;
     }) => void;
     /** host → main：闲时任务派发结果，转交给 scheduler 结算（与 cron 独立）。 */
     onOffPeakRunResult?: (result: {
@@ -547,6 +550,8 @@ export function spawnHostProcess(
         sessionId: result.data.sessionId,
         error: result.data.error,
         failureKind: result.data.failureKind,
+        settlement: result.data.settlement,
+        retryAtMs: result.data.retryAtMs,
       });
       return;
     }

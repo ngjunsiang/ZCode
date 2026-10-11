@@ -333,6 +333,11 @@ export {
 } from "./session/automationResumePolicy.js";
 // 闲时任务与 automation 同库不同表；类型/常量全独立。
 export { OffPeakTaskRepo, OFF_PEAK_CLAIM_STALE_MS } from "./session/offPeakTaskRepo.js";
+// fork Auto-Resume：host 侧 resumeTurn CAS 派发与拒绝分流共用件。
+export {
+  sendHostCasCommandV4,
+  ZCodeV4CommandRejectedError,
+} from "./zcode-agent/zcodeV4HostCommand.js";
 // host 域终态回填 files_changed 复用现有 task diff 汇总。
 export { buildTaskChangeSummary } from "./session/taskChangeSummary.js";
 export { OffPeakTaskService } from "./session/offPeakTaskService.js";
