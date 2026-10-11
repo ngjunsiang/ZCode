@@ -44,6 +44,7 @@ import {
   IOnboardingRecordService,
   IWindowControllerService,
   IConversationShareService,
+  IUsageStatsService,
   IZCodeAgentService,
   IZCodeTaskService,
   IZCodeSessionService,
@@ -66,6 +67,12 @@ import {
   createSettingServiceWithMigrations,
   OffPeakModelUnavailableError,
   OffPeakPermanentDispatchError,
+  // fork Auto-Resume：额度预检 + 重臂决策 + resumeTurn CAS 派发共用件。
+  decideResumeTurnDispatch,
+  isEntitlementQuotaAvailable,
+  nextEntitlementResetAt,
+  sendHostCasCommandV4,
+  ZCodeV4CommandRejectedError,
   type HostApiNetworkTransport,
   type OffPeakRequestAuthBuilder,
 } from "@zcode/services/node";
@@ -865,13 +872,161 @@ function trackCronRunOutcome(params: {
 }
 
 /**
+ * fork Auto-Resume（.fork/spec-auto-resume.md U23）：resumeTurn 动作的派发结果意图。
+ * host 不是 automation 行的属主：预检/重臂/guard 拒绝都折算成 outcome，由调用方
+ * （CronRun handler）放进 CronRunResult 上报，scheduler 结算落库。
+ */
+class CronDispatchOutcomeError extends Error {
+  constructor(
+    message: string,
+    readonly outcome: {
+      failureKind: "transient" | "permanent";
+      settlement?: "completed" | "obsolete";
+      retryAtMs?: number;
+    },
+  ) {
+    super(message);
+    this.name = "CronDispatchOutcomeError";
+  }
+}
+
+/**
+ * fork Auto-Resume：resumeTurn 动作派发（等价于会话横幅的 Resume 按钮）。
+ * 与 prompt 派发的差异：不建新会话、不重放模型/模式（resumeTask 仅激活冷会话）、
+ * 不投递提示词，改经 sendHostCasCommandV4 派发 v4 resumeTurn（commandId=runId，
+ * 使 trackCronRunOutcome 的 inputId 对账与 prompt 路径完全一致）。
+ */
+async function dispatchResumeTurnRun(
+  request: CronRunDispatchRequest,
+): Promise<{
+  taskId: string;
+  sessionId: string;
+  settlement?: "completed" | "obsolete";
+}> {
+  const trigger = request.runId.includes(":manual:") ? "manual" : "schedule";
+  const scheduledAt = parseCronRunScheduledAt(request.runId, request.automationId);
+  const targetServices = resolveAutomationTargetServices(request);
+  const zcodeTaskService = targetServices.getOptional(IZCodeTaskService);
+  if (!zcodeTaskService) {
+    throw new Error("ZCode task service is not initialized.");
+  }
+  const taskId = request.targetTaskId;
+  if (!taskId) {
+    // 创建边界（协议 refine + service 校验）已保证绑定存在；到这里的缺失是数据损坏。
+    throw new CronDispatchOutcomeError("resumeTurn automation is missing targetTaskId.", {
+      failureKind: "permanent",
+    });
+  }
+  // 1) 激活绑定会话（app 重启/切换 workspace 后通常不处于 active；resumeTurn 的 CLI
+  // guard 读持久化投影，激活本身不清除配额失败态，与用户冷启动点 Resume 等价）。
+  await zcodeTaskService.resumeTask({
+    taskId,
+    workspacePath: request.workspacePath,
+    ...(request.workspaceIdentity ? { workspaceIdentity: request.workspaceIdentity } : {}),
+    automationId: request.automationId,
+  });
+  // 2) 额度预检（best-effort）：快照缺失不算失败——「无快照不猜测」只约束 UI，派发尝试
+  // 由 CLI guard 与模型侧行为兜底。manual 语义是「现在就试」：未恢复直接失败，绝不顺延。
+  const usageStatsService = targetServices.getOptional(IUsageStatsService);
+  let quotaAvailable: boolean | undefined;
+  let freshResetAt: number | null = null;
+  if (usageStatsService) {
+    try {
+      const snapshot = await usageStatsService.getEntitlementSnapshot();
+      quotaAvailable = isEntitlementQuotaAvailable(snapshot);
+      freshResetAt = nextEntitlementResetAt(snapshot);
+    } catch (error) {
+      logger.warn(
+        `resumeTurn 额度预检失败，按无快照继续 automation=${request.automationId} runId=${request.runId}`,
+        error,
+      );
+    }
+  }
+  const decision = decideResumeTurnDispatch({
+    trigger,
+    scheduledAt,
+    now: Date.now(),
+    quotaAvailable,
+    freshResetAt,
+  });
+  if (decision.kind === "permanent") {
+    throw new CronDispatchOutcomeError(
+      `Auto-Resume 放弃：额度在视界内未恢复（runId=${request.runId}）。`,
+      { failureKind: "permanent" },
+    );
+  }
+  if (decision.kind === "transient") {
+    throw new CronDispatchOutcomeError(
+      `Auto-Resume 重臂：额度未恢复，retry_at=${decision.retryAtMs}（runId=${request.runId}）。`,
+      { failureKind: "transient", retryAtMs: decision.retryAtMs },
+    );
+  }
+  // 3) 派发 v4 resumeTurn（CAS 由 sendHostCasCommandV4 以 stale ACK 回报收敛，无需投影）。
+  const agentService = targetServices.getOptional(IZCodeAgentService);
+  if (!agentService) {
+    throw new CronDispatchOutcomeError("ZCode agent service is not initialized.", {
+      failureKind: "transient",
+    });
+  }
+  try {
+    await sendHostCasCommandV4({
+      send: (envelope) =>
+        agentService.sendConversationCommandV4({
+          workspacePath: request.workspacePath,
+          ...(request.workspaceIdentity ? { workspaceIdentity: request.workspaceIdentity } : {}),
+          envelope,
+        }),
+      type: "resumeTurn",
+      payload: {},
+      sessionId: taskId,
+      contextMessage: `automation resumeTurn run=${request.runId}`,
+    });
+  } catch (error) {
+    if (error instanceof ZCodeV4CommandRejectedError && trigger === "schedule") {
+      // CLI guard（会话已恢复/已无失败轮/非配额失败）或连续 stale：会话不再需要续跑。
+      // 静默跳过（spec 规则 5）：scheduler 记 skipped run 并删除 automation 行。
+      logger.info(`Auto-Resume obsolete：${error.message} runId=${request.runId}`);
+      throw new CronDispatchOutcomeError(error.message, {
+        failureKind: "permanent",
+        settlement: "obsolete",
+      });
+    }
+    throw error;
+  }
+  // 4) accepted：绑定本轮 turn 终态回写（promptTraceId=runId 与 prompt 路径同一对账口径）。
+  trackCronRunOutcome({
+    zcodeTaskService,
+    taskId,
+    traceId: request.runId as TraceId,
+    workspacePath: request.workspacePath,
+    workspaceIdentity: request.workspaceIdentity,
+    runId: request.runId,
+    automationId: request.automationId,
+    workspaceKey: resolveWorkspaceKey(request),
+    scheduledAt,
+    trigger,
+  });
+  return {
+    taskId,
+    sessionId: taskId,
+    // 仅 schedule 触发携带结算意图：manual runNow 不删除 automation 行（计划仍在）。
+    ...(trigger === "schedule" ? { settlement: "completed" as const } : {}),
+  };
+}
+
+/**
  * 把一次 cron/manual run 直接提交给当前 host 的 V4 task service。
  * 会话内 automation 可能绑定到未激活 session，必须先恢复再应用保存的运行参数。
  */
 async function dispatchCronRun(request: CronRunDispatchRequest): Promise<{
   taskId: string;
   sessionId: string;
+  settlement?: "completed" | "obsolete";
 }> {
+  // fork Auto-Resume：resumeTurn 动作走独立派发路径（续跑命令，不投递提示词）。
+  if (request.action === "resumeTurn") {
+    return dispatchResumeTurnRun(request);
+  }
   const targetServices = resolveAutomationTargetServices(request);
   const zcodeTaskService = targetServices.getOptional(IZCodeTaskService);
   if (!zcodeTaskService) {
@@ -2494,12 +2649,18 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
           ...dispatchResult,
         });
       } catch (error) {
+        // fork Auto-Resume：CronDispatchOutcomeError 携带结算意图（settlement/retryAtMs），
+        // 随 CronRunResult 上报给 main→scheduler 结算；普通错误保持既有 transient 语义。
+        const outcome =
+          error instanceof CronDispatchOutcomeError
+            ? error.outcome
+            : { failureKind: "transient" as const };
         parentPort.postMessage({
           type: HostResponseTypes.CronRunResult,
           runId: msg.runId,
           ok: false,
           error: error instanceof Error ? error.message : String(error),
-          failureKind: "transient",
+          ...outcome,
         });
       }
     })();
