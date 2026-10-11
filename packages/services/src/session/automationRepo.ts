@@ -59,6 +59,8 @@ interface AutomationRow {
   title: string;
   cron_expr: string;
   prompt: string;
+  /** 0004 起存在；缺列读取由 rowToAutomation 归一为 'prompt'（历史行）。 */
+  action: string;
   model: string | null;
   provider: string | null;
   mode: string | null;
@@ -122,6 +124,8 @@ function rowToAutomation(row: AutomationRow): ZCodeAutomation {
     title: row.title,
     cronExpr: row.cron_expr,
     prompt: row.prompt,
+    // 0004 前的历史行无 action 列（SQL undefined）→ 归一 'prompt'，语义与旧数据完全一致。
+    action: row.action === "resumeTurn" ? "resumeTurn" : "prompt",
     ...(modelSelection ? { modelSelection } : {}),
     // 历史版本曾把空字符串写进 mode，旧读取逻辑又直接强转为枚举，导致
     // automation/list 在协议层校验整个数组时被单条脏数据拖垮。历史非法值按未设置兼容。
@@ -350,7 +354,7 @@ export class AutomationRepo {
       }
       db.prepare(
         `INSERT INTO automations (
-          automation_id, title, cron_expr, prompt, model, provider, model_selection,
+          automation_id, title, cron_expr, prompt, action, model, provider, model_selection,
           workspace_key, workspace_path, workspace_identity, project_id, host_id, additional_directories, target_task_id, bot_delivery_target, location_kind,
           recurring, max_runs, end_at, schedule_rule, schedule_edited_by_user,
           run_count, enabled, lifecycle_status,
@@ -359,7 +363,7 @@ export class AutomationRepo {
           mode, thought_level,
           created_at, updated_at
         ) VALUES (
-          @automation_id, @title, @cron_expr, @prompt, @model, @provider, @model_selection,
+          @automation_id, @title, @cron_expr, @prompt, @action, @model, @provider, @model_selection,
           @workspace_key, @workspace_path, @workspace_identity, @project_id, @host_id, @additional_directories, @target_task_id, @bot_delivery_target, 'local',
           @recurring, @max_runs, @end_at, @schedule_rule, 0,
           0, @enabled, @lifecycle_status,
@@ -372,7 +376,8 @@ export class AutomationRepo {
         automation_id: automationId,
         title: params.title,
         cron_expr: params.cronExpr,
-        prompt: params.prompt,
+        prompt: params.prompt ?? "",
+        action: params.action ?? "prompt",
         model: null,
         provider: null,
         // 任务配置的显式空值与尚未迁移的 SQL NULL 分开；run 的 SQL NULL 冻结语义不变。
@@ -579,6 +584,41 @@ export class AutomationRepo {
       )
       .run({ id: automationId, workspace_key: workspaceKey ?? null });
     return result.changes > 0;
+  }
+
+  /**
+   * fork Auto-Resume：按绑定会话读 resumeTurn 动作的 automation。
+   * 只匹配 action='resumeTurn'——prompt 动作的 targetTaskId 绑定（会话内 CronCreate）不受
+   * 会话归档/删除影响，语义互不复用。
+   */
+  async listResumeTurnByTargetTask(
+    targetTaskId: string,
+    workspaceKey?: string,
+  ): Promise<ZCodeAutomation[]> {
+    await this.ensureReady();
+    const rows = this.getDatabase()
+      .prepare(
+        `SELECT * FROM automations
+        WHERE action = 'resumeTurn' AND target_task_id = @target_task_id
+          AND (@workspace_key IS NULL OR workspace_key = @workspace_key)
+        ORDER BY created_at DESC`,
+      )
+      .all({ target_task_id: targetTaskId, workspace_key: workspaceKey ?? null }) as unknown as
+      AutomationRow[];
+    return rows.map(rowToAutomation);
+  }
+
+  /** fork Auto-Resume：会话归档/删除或结算终态时清理其 resumeTurn automation（不级联 runs 历史）。 */
+  async deleteResumeTurnByTargetTask(targetTaskId: string, workspaceKey?: string): Promise<number> {
+    await this.ensureReady();
+    const result = this.getDatabase()
+      .prepare(
+        `DELETE FROM automations
+        WHERE action = 'resumeTurn' AND target_task_id = @target_task_id
+          AND (@workspace_key IS NULL OR workspace_key = @workspace_key)`,
+      )
+      .run({ target_task_id: targetTaskId, workspace_key: workspaceKey ?? null });
+    return Number(result.changes ?? 0);
   }
 
   /** 暂停 / 恢复。paused ↔ active，保留 next_run_at / run_count。 */
@@ -829,6 +869,7 @@ export class AutomationRepo {
             a.host_id AS a_host_id,
             a.additional_directories AS a_additional_directories,
             a.target_task_id AS a_target_task_id,
+            a.action AS a_action,
             a.location_kind AS a_location_kind,
             a.recurring AS a_recurring,
             a.max_runs AS a_max_runs,
@@ -909,6 +950,7 @@ export class AutomationRepo {
             host_id: row["a_host_id"] as string | null,
             additional_directories: row["a_additional_directories"] as string | null,
             target_task_id: (row["a_target_task_id"] as string | null) ?? null,
+            action: (row["a_action"] as string | undefined) ?? "prompt",
             location_kind: row["a_location_kind"] as string,
             recurring: row["a_recurring"] as number,
             max_runs: (row["a_max_runs"] as number | null) ?? null,
@@ -1075,6 +1117,31 @@ export class AutomationRepo {
       error: options.error,
       now,
     });
+  }
+
+  /**
+   * fork Auto-Resume 重臂：额度未到点时不按退避公式重试，直接把 retry_at 推到调用方
+   * （policy）给出的目标时刻；不计 attempts（resume 动作以 run.scheduledAt+1h 视界为界，
+   * 不受 DISPATCH_MAX_ATTEMPTS 约束），释放认领等下轮 claimDue。
+   */
+  async markDispatchRetryAt(
+    automationId: string,
+    options: { retryAtMs: number; error?: string },
+  ): Promise<void> {
+    await this.ensureReady();
+    this.getDatabase()
+      .prepare(
+        `UPDATE automations
+        SET dispatch_status = 'failed_to_dispatch', retry_at = @retry_at,
+            running = 0, claimed_at = NULL, last_error = @error, updated_at = @now
+        WHERE automation_id = @id`,
+      )
+      .run({
+        id: automationId,
+        retry_at: options.retryAtMs,
+        error: options.error ?? null,
+        now: Date.now(),
+      });
   }
 
   /** 关机/退出时释放认领：清 running、保留 next_run_at，不记失败不推进。 */
