@@ -1,6 +1,6 @@
 import { CodingPlanEntryButton } from "@/settings/CodingPlanEntryButton.js";
 import { useEffect, useRef } from "react";
-import { InfoIcon, RocketIcon, XIcon } from "lucide-react";
+import { InfoIcon, RocketIcon, XIcon, AlarmClockIcon, CheckIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type {
@@ -51,6 +51,7 @@ export function ConversationQuotaBanner({
   onDismiss,
   onShown,
   resume,
+  autoResume,
 }: {
   state: SessionQuotaBannerState;
   upgradeActionLabelId?: string;
@@ -63,6 +64,23 @@ export function ConversationQuotaBanner({
     hint?: string | null;
     pending?: boolean;
     onResume: () => void;
+  };
+  /**
+   * fork Auto-Resume（spec-auto-resume.md U25）：仅在重置未确认（Resume 灰置）时由
+   * SessionPane 传入；重置确认后按钮随 Resume 一起消失（spec 产品规则 1）。
+   */
+  autoResume?: {
+    /** true=已调度（显示「已调度 · 点击取消」chip）；false=显示调度按钮。 */
+    scheduled: boolean;
+    /** 重置时刻未知（无快照/无桶）⇒ false：灰置 + tooltip（不猜测）。 */
+    canSchedule: boolean;
+    /** 重置时刻展示文本（locale-aware）；null ⇒ 灰置 + tooltip（不猜测）。 */
+    timeLabel: string | null;
+    /** 已调度 chip 的重置时刻（可空：nextRunAt 理论必有，防御性展示）。 */
+    scheduledTimeLabel?: string | null;
+    pending?: boolean;
+    onSchedule: () => void;
+    onCancel: () => void;
   };
 }) {
   const { intl, locale } = useZCodeIntl();
@@ -130,6 +148,45 @@ export function ConversationQuotaBanner({
           >
             {intl.formatMessage({ id: "chat.quota.action.resume" })}
           </Button>
+        ) : null}
+        {autoResume ? (
+          autoResume.scheduled ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-auto shrink-0 gap-1.5 rounded-full border-dashed"
+              disabled={autoResume.pending === true}
+              title={intl.formatMessage({ id: "chat.quota.autoResume.scheduledHint" })}
+              onClick={autoResume.onCancel}
+            >
+              <CheckIcon className="size-3.5" />
+              {intl.formatMessage(
+                { id: "chat.quota.autoResume.scheduled" },
+                { time: autoResume.scheduledTimeLabel ?? "" },
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-auto shrink-0 gap-1.5 rounded-full"
+              disabled={!autoResume.canSchedule || autoResume.pending === true}
+              title={
+                autoResume.canSchedule
+                  ? undefined
+                  : intl.formatMessage({ id: "chat.quota.autoResume.noResetTime" })
+              }
+              onClick={autoResume.onSchedule}
+            >
+              <AlarmClockIcon className="size-3.5" />
+              {intl.formatMessage(
+                { id: "chat.quota.action.autoResume" },
+                { time: autoResume.timeLabel ?? "" },
+              )}
+            </Button>
+          )
         ) : null}
         {onUpgrade ? (
           <CodingPlanEntryButton

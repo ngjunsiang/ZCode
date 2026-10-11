@@ -1711,10 +1711,18 @@ export function AutomationsSection({
                           >
                             <div className="flex h-full min-w-0 flex-1 flex-col gap-3">
                               <span className="block truncate pr-12 text-ui-base font-medium leading-5 text-foreground">
+                                {/* fork Auto-Resume：resumeTurn 卡片带专属徽标（spec 规则 7）。 */}
+                                {automation.action === "resumeTurn" ? (
+                                  <span className="mr-1.5 inline-flex shrink-0 items-center rounded-md bg-surface px-1.5 py-0.5 align-middle text-ui-sm font-normal text-foreground-subtle">
+                                    {intl.formatMessage({ id: "chat.quota.autoResume.badge" })}
+                                  </span>
+                                ) : null}
                                 {automation.title}
                               </span>
                               <p className="text-wrap-phrase line-clamp-2 h-10 text-ui-base font-normal leading-5 text-foreground-subtle">
-                                {automationPromptSummary(automation.prompt)}
+                                {automation.action === "resumeTurn"
+                                  ? intl.formatMessage({ id: "automations.resume.summary" })
+                                  : automationPromptSummary(automation.prompt)}
                               </p>
                               <div className="mt-auto flex h-6 min-w-0 items-center gap-2 text-ui-base leading-5">
                                 <div className="flex min-w-0 flex-1 items-center gap-2">

@@ -120,7 +120,12 @@ export interface ZCodeAgentCreateAutomationParams extends ZCodeAgentWorkspaceTar
   title: string;
   cronExpr: string;
   relativeDelayMinutes?: number;
-  prompt: string;
+  // prompt 动作必填；resumeTurn（Auto-Resume）动作忽略提示词，可省。
+  prompt?: string;
+  /** 缺省 "prompt"。resumeTurn：到点对绑定会话派发 v4 resumeTurn（fork，spec-auto-resume.md）。 */
+  action?: "prompt" | "resumeTurn";
+  /** resumeTurn 必填：被续跑的目标会话。 */
+  targetTaskId?: string;
   modelSelection?: ModelSelection;
   mode?: string;
   recurring?: boolean;
