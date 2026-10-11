@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- fork Auto-Resume 新增 resumeTurn 校验/接线后越门禁；领域规则已拆至
+   automationActionRules / automationResumePolicy，剩余为管理面编排，继续拆散收益低（Root.tsx 同例）。 */
 import type {
   ZCodeAutomation,
   ZCodeAutomationCreateParams,
@@ -7,6 +9,11 @@ import type {
 } from "@zcode/shared";
 import { resolveWorkspaceKey } from "@zcode/shared";
 import { AutomationRepo } from "#src/session/automationRepo.js";
+import {
+  assertValidAutomationActionCreate,
+  assertValidAutomationActionUpdate,
+  resolveAutomationAction,
+} from "#src/session/automationActionRules.js";
 import {
   assertValidAutomationIntervalCarrier,
   forceIntervalCarrierRecurring,
@@ -68,6 +75,8 @@ export class InvalidAutomationRelativeDelayError extends Error {
     this.name = "InvalidAutomationRelativeDelayError";
   }
 }
+
+export { InvalidAutomationActionError } from "#src/session/automationActionRules.js";
 
 const MAX_MONTHLY_AUTOMATION_SCHEDULE_INTERVAL = 1_200;
 const AUTOMATION_SCHEDULE_RULE_UNITS = new Set([
@@ -143,6 +152,9 @@ export class AutomationService {
 
   async create(params: ZCodeAutomationCreateParams): Promise<ZCodeAutomation> {
     const createdAt = Date.now();
+    // fork Auto-Resume：resumeTurn 动作的服务端不变量（规则与错误类型在 automationActionRules）。
+    const action = resolveAutomationAction(params);
+    assertValidAutomationActionCreate(params);
     const relativeDelayMinutes = params.relativeDelayMinutes;
     if (
       relativeDelayMinutes !== undefined &&
@@ -178,13 +190,19 @@ export class AutomationService {
       interval: _interval,
       ...persistedParams
     } = params;
+    // fork Auto-Resume：action 持久化；resumeTurn 不投递提示词，落库空串。
+    const persistedParamsWithAction: ZCodeAutomationCreateParams = {
+      ...persistedParams,
+      action,
+      prompt: action === "resumeTurn" ? "" : (params.prompt as string),
+    };
     // 模型只知道日期时会自行猜测当前时刻，把“3 分钟后”算成两小时后或过去时间。
     // 相对时间必须由领域层基于真实 Date.now() 建立锚点，不能信任模型换算的绝对 cron。
     const relativeNormalizedParams =
       relativeDelayMinutes === undefined
-        ? persistedParams
+        ? persistedParamsWithAction
         : {
-            ...persistedParams,
+            ...persistedParamsWithAction,
             ...buildRelativeDelaySchedule(relativeDelayMinutes, createdAt),
             recurring: false,
           };
@@ -260,6 +278,9 @@ export class AutomationService {
     const workspaceKey = resolveScopeKey(scope);
     const existing = await this.repo.get(automationId, workspaceKey);
     if (!existing) return null;
+
+    // fork Auto-Resume：resumeTurn 任务仅允许改标题（规则在 automationActionRules）。
+    assertValidAutomationActionUpdate(existing.action, params);
 
     if (params.scheduleRule) assertValidAutomationScheduleRule(params.scheduleRule);
 

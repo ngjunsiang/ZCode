@@ -9,6 +9,11 @@ import {
 import { importLegacyAutomationSelections } from "#src/session/tasksDatabase/provider-selection-v2.js";
 import { OFFICIAL_GLM_SELECTION_MIGRATION_SQL } from "#src/session/tasksDatabase/official-glm-selection-v3.js";
 
+// 0004（fork Auto-Resume）：automations.action 派发动作列。历史行缺省 'prompt' 语义不变；
+// 不能并进 0001 的 columns 冻结清单——那会改变已应用 checksum，让既有库启动即 checksum mismatch。
+export const AUTOMATION_ACTION_MIGRATION_SQL =
+  "ALTER TABLE automations ADD COLUMN action TEXT NOT NULL DEFAULT 'prompt'";
+
 // 冻结历史列声明，不能以实时 Repo/schema 代替，否则新版构建会改变已应用 checksum。
 const columns = [
   ["tasks", "title_overridden", "INTEGER NOT NULL DEFAULT 0"],
@@ -64,6 +69,10 @@ const definitions = [
     id: "0003_official_glm_selection",
     checksumInput: [OFFICIAL_GLM_SELECTION_MIGRATION_SQL],
   },
+  {
+    id: "0004_automation_action",
+    checksumInput: [AUTOMATION_ACTION_MIGRATION_SQL],
+  },
 ] as const;
 
 export function runTasksDatabaseMigrations(
@@ -113,7 +122,10 @@ export function runTasksDatabaseMigrations(
       options.onProgress?.("migrating", { ...migrationFacts });
       if (migration.id === "0001_adopt_task_schema") adoptSchema(db);
       else if (migration.id === "0002_provider_selection") importLegacyAutomationSelections(db);
-      else db.exec(OFFICIAL_GLM_SELECTION_MIGRATION_SQL);
+      else if (migration.id === "0003_official_glm_selection")
+        db.exec(OFFICIAL_GLM_SELECTION_MIGRATION_SQL);
+      else if (migration.id === "0004_automation_action") adoptAutomationActionColumn(db);
+      else throw new Error("Unhandled tasks database migration");
       migrationFacts.executedCount++;
       db.prepare("INSERT INTO tasks_schema_migration VALUES(?,?,?)").run(
         migration.id,
@@ -154,6 +166,13 @@ function adoptSchema(db: DatabaseSync): void {
     GROUP BY workspace_key, session_id HAVING count(*)>1 LIMIT 1`)
     .get();
   if (!duplicate) db.exec(boundIndex);
+}
+
+/** 0004 幂等补列：账本被回退/清空重放（DB109-02/05、并发 DB109-06）时列可能已在。 */
+function adoptAutomationActionColumn(db: DatabaseSync): void {
+  const existing = db.prepare("PRAGMA table_info(automations)").all();
+  if (existing.some((entry) => entry.name === "action")) return;
+  db.exec(AUTOMATION_ACTION_MIGRATION_SQL);
 }
 
 /** 交接只复用已完成初始化；每个新连接仍按冻结账本确认，替换/清空文件不能假 ready。 */

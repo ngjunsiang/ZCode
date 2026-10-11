@@ -704,7 +704,9 @@ async function dispatchOffPeakRun(request: OffPeakRunDispatchRequest): Promise<{
 interface CronRunDispatchRequest {
   automationId: string;
   runId: string;
-  prompt: string;
+  // resumeTurn 动作不投递提示词（scheduler 省略该字段）；prompt 动作恒有值。
+  prompt?: string;
+  action?: "prompt" | "resumeTurn";
   targetTaskId?: string;
   modelSelection?: ModelSelection;
   mode?: ZCodeTaskMode;
@@ -973,7 +975,7 @@ async function dispatchCronRun(request: CronRunDispatchRequest): Promise<{
     await zcodeTaskService.sendPrompt({
       taskId: task.taskId,
       traceId: promptTraceId,
-      content: request.prompt,
+      content: request.prompt ?? "",
       clientMode: "desktop-continuous",
       automationId: request.automationId,
     });

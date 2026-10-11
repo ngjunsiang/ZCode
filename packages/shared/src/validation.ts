@@ -722,13 +722,16 @@ export const hostFeedbackLogArchiveResultMessageSchema = z.object({
 
 // main → host：定时任务到点派发。会话内 cron 带 targetTaskId 时直接 sendPrompt 到当前会话；
 // 历史未绑定任务才 fallback createTask + sendPrompt 建 session。
+// action=resumeTurn（fork Auto-Resume）：host 不投递 prompt，改派 v4 resumeTurn 续跑命令；
+// prompt 对该动作无语义（scheduler 透传原值，host 忽略），故保持可空宽松。
 export const hostCronRunMessageSchema = z.object({
   type: z.literal("cron-run"),
   automationId: nonEmptyStringSchema,
   runId: nonEmptyStringSchema,
   workspacePath: nonEmptyStringSchema,
   workspaceIdentity: z.string().optional(),
-  prompt: nonEmptyStringSchema,
+  prompt: z.string().optional(),
+  action: z.enum(["prompt", "resumeTurn"]).optional(),
   targetTaskId: nonEmptyStringSchema.optional(),
   modelSelection: modelSelectionSchema.optional(),
   mode: z.string().optional(),
@@ -1230,6 +1233,10 @@ export const hostFeedbackLogArchiveRequestResponseSchema = z.object({
 });
 
 // host → main：定时任务派发结果。ok=已成功创建 session 且 prompt 已发出。
+// settlement/retryAtMs（fork Auto-Resume，仅 resumeTurn 动作携带）：host 上报结算意图，
+// scheduler（tasks-index 属主）据此执行——completed=派发成功并删除 automation 行；
+// obsolete=会话已无需续跑（CLI guard 拒绝），记 skipped run 并删除行；
+// transient+retryAtMs=额度未到点，按 retryAtMs 重臂（不走退避公式、不计 attempts）。
 export const hostCronRunResultResponseSchema = z.object({
   type: z.literal("cron-run-result"),
   runId: nonEmptyStringSchema,
@@ -1238,6 +1245,8 @@ export const hostCronRunResultResponseSchema = z.object({
   sessionId: z.string().optional(),
   error: z.string().optional(),
   failureKind: z.enum(["transient", "permanent"]).optional(),
+  settlement: z.enum(["completed", "obsolete"]).optional(),
+  retryAtMs: z.number().optional(),
 });
 
 // host → main：闲时任务派发结果。ok=session 已确保存在且 prompt 已发出；迟到结果用 offPeakTaskId 兜底结算。

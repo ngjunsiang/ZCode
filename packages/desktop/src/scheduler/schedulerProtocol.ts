@@ -10,6 +10,8 @@ export type SchedulerToMainMessage =
       automationId: string;
       runId: string;
       prompt: string;
+      // fork Auto-Resume：resumeTurn 动作时 host 不投递 prompt，改派 v4 resumeTurn 命令。
+      action?: "prompt" | "resumeTurn";
       targetTaskId?: string;
       modelSelection?: ModelSelection;
       mode?: string;
@@ -58,6 +60,10 @@ export type MainToSchedulerMessage =
       sessionId?: string;
       error?: string;
       failureKind?: "transient" | "permanent";
+      // fork Auto-Resume 结算意图（host 上报，scheduler 是 tasks-index 属主、负责执行删除/重臂）。
+      settlement?: "completed" | "obsolete";
+      /** transient 额度未到点重臂：直接指定 retry_at，不走退避公式、不计 attempts。 */
+      retryAtMs?: number;
     }
   | {
       // 闲时任务派发结果；迟到结果仅凭 offPeakTaskId 结算（无 inFlight 上下文也可，幂等）。
