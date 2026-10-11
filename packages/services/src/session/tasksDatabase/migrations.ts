@@ -141,6 +141,8 @@ const definitions = [
       WHEN EXISTS(SELECT 1 FROM task_purge WHERE workspace_key=new.workspace_key AND task_id=new.task_id AND state='deleted')
       BEGIN SELECT RAISE(ABORT, 'task.permanently-deleted'); END;
     `),
+  },
+  {
     // 0008（fork Auto-Resume；4.0 移植时由 0007 再重编号：上游 4.0 新增
     // 0007_task_permanent_deletion 占用原槽位）。
     id: "0008_automation_action",
