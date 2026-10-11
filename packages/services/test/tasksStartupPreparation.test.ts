@@ -94,8 +94,9 @@ it("SILENTDB-01/02: reports maintenance separately and no migration for a prepar
       expect.objectContaining({
         migration: {
           kind: "initialize",
-          executedCount: 5,
-          committedCount: 5,
+          // fork 0007_automation_action 入账本：基础账本 5→6（上游 3.16.x 自带 0004/0006）。
+          executedCount: 6,
+          committedCount: 6,
           lastAppliedMigrationId: null,
         },
       }),
@@ -104,7 +105,7 @@ it("SILENTDB-01/02: reports maintenance separately and no migration for a prepar
     await prepareTasksIndexStorage(path, (phase, migration) => second.push({ phase, migration }));
     expect(second.some((s) => s.phase === "migrating")).toBe(false);
     expect(second.at(-1)).toMatchObject({
-      migration: { lastAppliedMigrationId: "0006_task_group_admissions" },
+      migration: { lastAppliedMigrationId: "0007_automation_action" },
     });
     expect(second.some((s) => s.phase === "maintaining")).toBe(true);
     expect(second).toContainEqual(
@@ -135,8 +136,8 @@ it("retains committed facts if closing the migration connection fails", async ()
     expect(states.at(-1)).toMatchObject({
       migration: {
         kind: "initialize",
-        executedCount: 5,
-        committedCount: 5,
+        executedCount: 6,
+        committedCount: 6,
         lastAppliedMigrationId: null,
       },
     });
@@ -176,7 +177,10 @@ it("keeps the pre-upgrade task ledger ID after committing the remaining migratio
     await prepareTasksIndexStorage(path, () => {});
     const db = new DatabaseSync(path);
     try {
-      db.exec("DELETE FROM tasks_schema_migration WHERE id='0006_task_group_admissions'");
+      // 回退最后两个迁移（0006 上游账本项 + 0007 fork 补列），保留 0004 作为 pre-upgrade 账本顶。
+      db.exec(
+        "DELETE FROM tasks_schema_migration WHERE id IN ('0006_task_group_admissions','0007_automation_action')",
+      );
     } finally {
       db.close();
     }
@@ -186,8 +190,8 @@ it("keeps the pre-upgrade task ledger ID after committing the remaining migratio
       phase: "ready",
       migration: {
         kind: "upgrade",
-        executedCount: 1,
-        committedCount: 1,
+        executedCount: 2,
+        committedCount: 2,
         lastAppliedMigrationId: "0004_project_execution_scopes",
       },
     });
