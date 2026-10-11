@@ -19,6 +19,9 @@ export interface CronRunResultPayload {
   sessionId?: string;
   error?: string;
   failureKind?: "transient" | "permanent";
+  // fork Auto-Resume：host 上报的结算意图与重臂时刻，原样转交 scheduler 结算。
+  settlement?: "completed" | "obsolete";
+  retryAtMs?: number;
 }
 
 /** host → main 的闲时任务派发结果（与 cron 消息独立）。 */
@@ -135,6 +138,7 @@ export function spawnCronScheduler(deps: CronSchedulerDeps): CronSchedulerHandle
           automationId: msg.automationId,
           runId: msg.runId,
           prompt: msg.prompt,
+          action: msg.action,
           targetTaskId: msg.targetTaskId,
           modelSelection: msg.modelSelection,
           mode: msg.mode,
