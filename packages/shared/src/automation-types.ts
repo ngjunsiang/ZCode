@@ -58,6 +58,13 @@ export type ZCodeAutomationRunDispatchStatus =
   | "failed_to_dispatch"
   | "skipped";
 
+/**
+ * 触发后的派发动作。prompt=投递提示词起/续会话（历史默认，缺列视为 prompt）；
+ * resumeTurn=向绑定会话（targetTaskId 必填）派发 v4 resumeTurn 续跑命令（Auto-Resume，
+ * 见 .fork/spec-auto-resume.md），不投递提示词、不重放已完成工具。
+ */
+export type ZCodeAutomationAction = "prompt" | "resumeTurn";
+
 /** 单次 run 产出 session 后的运行结果（由 session runtime 回写，仅用于展示）。 */
 export type ZCodeAutomationRunOutcome = "running" | "succeeded" | "failed" | "stopped";
 
@@ -71,7 +78,9 @@ export interface ZCodeAutomation {
   title: string;
   /** 5 段 cron，本地时区。 */
   cronExpr: string;
+  /** 派发提示词；resumeTurn 动作不使用提示词，落库为空字符串。 */
   prompt: string;
+  action: ZCodeAutomationAction;
   /** 缺失表示 Select 阶段继续跟随 Workspace 首选；存在时固定结构化模型意图。 */
   modelSelection?: ModelSelection;
   /** 权限模式；派发时透传给 createTask，缺省走 workspace 默认。 */
@@ -159,7 +168,10 @@ export interface ZCodeAutomationCreateParams {
   cronExpr: string;
   /** 仅创建期使用：由服务层基于真实当前时间换算为 cronExpr，不写入数据库。 */
   relativeDelayMinutes?: number;
-  prompt: string;
+  /** prompt 动作必填；resumeTurn 动作忽略（落库空串）。 */
+  prompt?: string;
+  /** 缺省 "prompt"。resumeTurn 见 ZCodeAutomationAction 注释。 */
+  action?: ZCodeAutomationAction;
   modelSelection?: ModelSelection;
   mode?: ZCodeTaskMode;
   workspacePath: string;

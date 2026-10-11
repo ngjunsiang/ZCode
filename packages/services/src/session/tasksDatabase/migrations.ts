@@ -17,6 +17,11 @@ import {
   SOURCE_SERVER_SCHEMA_CHECKSUM_INPUT,
 } from "#src/session/tasksDatabase/source-server-schema-v5.js";
 
+// 0007（fork Auto-Resume）：automations.action 派发动作列。历史行缺省 'prompt' 语义不变；
+// 不能并进 0001 的 columns 冻结清单——那会改变已应用 checksum，让既有库启动即 checksum mismatch。
+export const AUTOMATION_ACTION_MIGRATION_SQL =
+  "ALTER TABLE automations ADD COLUMN action TEXT NOT NULL DEFAULT 'prompt'";
+
 // 冻结历史列声明，不能以实时 Repo/schema 代替，否则新版构建会改变已应用 checksum。
 const columns = [
   ["tasks", "title_overridden", "INTEGER NOT NULL DEFAULT 0"],
@@ -117,6 +122,14 @@ const definitions = [
     touchedTables: ["task_group_admissions"],
     checksumInput: [TASK_GROUP_ADMISSIONS_SQL],
     apply: (db: DatabaseSync) => db.exec(TASK_GROUP_ADMISSIONS_SQL),
+  },
+  {
+    // 0007（fork Auto-Resume，3.16.2 移植时由 0004 重编号：上游 3.16.x 已自带
+    // 0004_project_execution_scopes 与 0006_task_group_admissions）。
+    id: "0007_automation_action",
+    touchedTables: ["automations"],
+    checksumInput: [AUTOMATION_ACTION_MIGRATION_SQL],
+    apply: adoptAutomationActionColumn,
   },
 ] as const;
 
@@ -306,4 +319,11 @@ function adoptSchema(db: DatabaseSync): void {
     GROUP BY workspace_key, session_id HAVING count(*)>1 LIMIT 1`)
     .get();
   if (!duplicate) db.exec(boundIndex);
+}
+
+/** 0007 幂等补列：账本被回退/清空重放（DB109-02/05、并发 DB109-06）时列可能已在。 */
+function adoptAutomationActionColumn(db: DatabaseSync): void {
+  const existing = db.prepare("PRAGMA table_info(automations)").all();
+  if (existing.some((entry) => entry.name === "action")) return;
+  db.exec(AUTOMATION_ACTION_MIGRATION_SQL);
 }
