@@ -6639,7 +6639,15 @@ const zhCN: Record<string, string> = {
   "chat.quota.action.switchProvider": "切换供应商",
   "chat.quota.action.refresh": "刷新额度",
   // fork resumeTurn：配额中断会话的续跑入口。
-  "chat.quota.action.resume": "继续任务",
+    "chat.quota.action.resume": "继续任务",
+  // fork Auto-Resume（spec-auto-resume.md U28）
+  "chat.quota.action.autoResume": "自动恢复于 {time}",
+  "chat.quota.autoResume.scheduled": "已调度自动恢复 {time} · 点击取消",
+  "chat.quota.autoResume.scheduledHint": "已调度：额度重置后将自动续跑本会话。点击取消。",
+  "chat.quota.autoResume.noResetTime": "重置时刻未知——服务端提供前无法自动恢复。",
+  "chat.quota.autoResume.failed": "自动恢复调度失败。",
+  "chat.quota.autoResume.badge": "自动恢复",
+  "automations.resume.summary": "绑定会话续跑任务：额度重置后自动续跑本会话。",
   "chat.quota.resume.failed": "续跑失败，请重试。",
 
   // 权限请求

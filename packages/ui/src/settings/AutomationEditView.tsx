@@ -1609,11 +1609,15 @@ export function AutomationEditView({
     () =>
       resolveAutomationEditRequiredFieldErrors({
         title,
-        cronExpr,
-        prompt,
+        // fork Auto-Resume：resumeTurn 定义字段锁定（编辑器隐藏、提交只回传标题），
+        // prompt/cron 不参与必填校验——占位值仅用于绕过校验，不进提交。
+        cronExpr: editing?.action === "resumeTurn" ? "*/5 * * * *" : cronExpr,
+        prompt: editing?.action === "resumeTurn" ? "locked" : prompt,
       }),
-    [cronExpr, prompt, title],
+    [cronExpr, editing?.action, prompt, title],
   );
+  /** fork Auto-Resume：resumeTurn 是系统管理的绑定续跑，编辑面只开放标题（spec 规则 7/Q3）。 */
+  const lockDefinition = editing?.action === "resumeTurn";
   const hasValidWorkspace = Boolean(editing || selectedWorkspace);
   const submissionContextReady =
     hasValidWorkspace &&
@@ -1750,7 +1754,8 @@ export function AutomationEditView({
       // 防止刚改选择尚未取得对应 View 时，快速保存采用上一个输入的有效结果。
       if (modelSelection.current !== model || thoughtLevelRef.current !== thoughtLevel)
         return false;
-      const input: CreateAutomationInput | UpdateAutomationInput = {
+      // fork Auto-Resume：let（非 const）——lockDefinition 时提交只回传标题，下方重赋值。
+      let input: CreateAutomationInput | UpdateAutomationInput = {
         ...(!editing && selectedWorkspace?.projectId
           ? { projectId: selectedWorkspace.projectId }
           : {}),
@@ -1760,6 +1765,13 @@ export function AutomationEditView({
           modeValue: modeRef.current,
         }),
       };
+      if (lockDefinition) {
+        // fork Auto-Resume：服务端拒绝 resumeTurn 的定义字段编辑；UI 已隐藏编辑器，
+        // 提交只回传标题（updateAutomation 的其余字段缺省=不修改）。
+        input = {
+          title: (input as UpdateAutomationInput).title,
+        } as UpdateAutomationInput;
+      }
       // 编辑态锁定原项目;新建态用选中的项目。
       const target = editing
         ? {
@@ -2118,7 +2130,8 @@ export function AutomationEditView({
             </div>
 
             {/* 会话来源的旧 cron 无法可靠回显；删除后切换到标准 UI 调度编辑流程。 */}
-            {preserveSessionCreatedSchedule ? (
+            {/* fork Auto-Resume：resumeTurn 定义字段锁定（服务端仅允许改标题），调度编辑器整体隐藏。 */}
+            {lockDefinition ? null : preserveSessionCreatedSchedule ? (
               <div className={AUTOMATION_FORM_FIELD_CLASSNAME}>
                 <label className="inline-flex items-center gap-1.5 text-ui-base font-normal leading-5 text-foreground-subtle">
                   {intl.formatMessage({
@@ -2533,6 +2546,8 @@ export function AutomationEditView({
               </div>
             )}
 
+            {lockDefinition ? null : (
+            <>
             {/* Instructions + 底部项目/模型选择器 */}
             <div className={AUTOMATION_FORM_FIELD_CLASSNAME}>
               <label
@@ -2705,6 +2720,8 @@ export function AutomationEditView({
                 </AutomationInstructionsToolbar>
               </AutomationInstructionsComposer>
             </div>
+            </>
+            )}
           </form>
         ) : (
           // History tab：运行历史内联表

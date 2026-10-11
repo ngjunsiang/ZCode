@@ -5152,11 +5152,16 @@ export function createZCodeAgentService(
         cronExpr: params.cronExpr,
         relativeDelayMinutes: params.relativeDelayMinutes,
         prompt: params.prompt,
+        // fork Auto-Resume：renderer 管理面（useAutoResume）走此入口创建 resumeTurn。
+        action: params.action,
+        targetTaskId: params.targetTaskId,
         modelSelection: params.modelSelection,
         mode: params.mode as ZCodeTaskMode | undefined,
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
-        recurring: params.recurring ?? true,
+        // 历史 prompt 动作缺省无限循环；resumeTurn 是一次性任务，缺省必须为 false。
+        recurring:
+          params.action === "resumeTurn" ? false : (params.recurring ?? true),
         maxRuns: params.maxRuns,
         endAt: params.endAt,
         scheduleRule: params.scheduleRule,
