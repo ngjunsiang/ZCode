@@ -1,6 +1,8 @@
 // fork/N5：quotaFailedLastTurn 谓词单元测试（spec 场景 1/2/3/4 + 窗口截断边）。
-import assert from "node:assert/strict";
-import test from "node:test";
+// 2026-10-12 由 node:test 改为 vitest：packages/ui/test/ 属于仓库根 vitest
+// 门禁（lint-staged/affected runner）的 glob，node:test 文件在该门禁下报
+// “No test suite found”，阻塞 pre-push；vitest 可正常解析相对导入。
+import { describe, expect, it } from "vitest";
 import type {
   ConversationRow,
   RowsWindow,
@@ -88,92 +90,86 @@ function detect(input: {
   });
 }
 
-test("live 形状：providerErrorCode 命中 GLM 配额码 + 已提交工具 ⇒ true", () => {
-  assert.equal(
-    detect({
-      lastError: lastError({
-        attribution: { providerErrorCode: "1313" },
+describe("quotaFailedLastTurn", () => {
+  it("live 形状：providerErrorCode 命中 GLM 配额码 + 已提交工具 ⇒ true", () => {
+    expect(
+      detect({
+        lastError: lastError({
+          attribution: { providerErrorCode: "1313" },
+        }),
+        rows: rows(turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }), toolCall({
+          turnId: TURN_ID,
+          createdAt: 950,
+          status: "success",
+        })),
       }),
-      rows: rows(turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }), toolCall({
-        turnId: TURN_ID,
-        createdAt: 950,
-        status: "success",
-      })),
-    }),
-    true,
-  );
-});
+    ).toBe(true);
+  });
 
-test("cold 降级形状：外层包装码 + attribution.providerErrorCode=1005 ⇒ true", () => {
-  assert.equal(
-    detect({
-      lastError: lastError({ attribution: { providerErrorCode: "1005" } }),
-      rows: rows(assistantText({ turnId: TURN_ID, createdAt: 950, text: "partial work" })),
-    }),
-    true,
-  );
-});
+  it("cold 降级形状：外层包装码 + attribution.providerErrorCode=1005 ⇒ true", () => {
+    expect(
+      detect({
+        lastError: lastError({ attribution: { providerErrorCode: "1005" } }),
+        rows: rows(assistantText({ turnId: TURN_ID, createdAt: 950, text: "partial work" })),
+      }),
+    ).toBe(true);
+  });
 
-test("窗口截断：失败轮 header 被丢弃时按 createdAt 归属已提交工作", () => {
-  assert.equal(
-    detect({
-      lastError: lastError({ attribution: { providerErrorCode: "1313" } }),
-      rows: rows(assistantText({ turnId: "turn-0", createdAt: 990, text: "done earlier" })),
-    }),
-    true,
-  );
-});
+  it("窗口截断：失败轮 header 被丢弃时按 createdAt 归属已提交工作", () => {
+    expect(
+      detect({
+        lastError: lastError({ attribution: { providerErrorCode: "1313" } }),
+        rows: rows(assistantText({ turnId: "turn-0", createdAt: 990, text: "done earlier" })),
+      }),
+    ).toBe(true);
+  });
 
-test("场景 4：并发上限 3008 永不显示 Resume", () => {
-  assert.equal(
-    detect({
-      lastError: lastError({ attribution: { providerErrorCode: "3008" } }),
-      rows: rows(toolCall({ turnId: TURN_ID, createdAt: 950, status: "success" })),
-    }),
-    false,
-  );
-});
+  it("场景 4：并发上限 3008 永不显示 Resume", () => {
+    expect(
+      detect({
+        lastError: lastError({ attribution: { providerErrorCode: "3008" } }),
+        rows: rows(toolCall({ turnId: TURN_ID, createdAt: 950, status: "success" })),
+      }),
+    ).toBe(false);
+  });
 
-test("场景 3：首步失败（无已提交工作）不显示 Resume", () => {
-  assert.equal(
-    detect({
-      rows: rows(
-        turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
-        toolCall({ turnId: TURN_ID, createdAt: 950, status: "running" }),
-      ),
-    }),
-    false,
-  );
-});
+  it("场景 3：首步失败（无已提交工作）不显示 Resume", () => {
+    expect(
+      detect({
+        rows: rows(
+          turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
+          toolCall({ turnId: TURN_ID, createdAt: 950, status: "running" }),
+        ),
+      }),
+    ).toBe(false);
+  });
 
-test("空文本 assistant 行不算已提交工作", () => {
-  assert.equal(
-    detect({
-      rows: rows(assistantText({ turnId: TURN_ID, createdAt: 950, text: "  " })),
-    }),
-    false,
-  );
-});
+  it("空文本 assistant 行不算已提交工作", () => {
+    expect(
+      detect({
+        rows: rows(assistantText({ turnId: TURN_ID, createdAt: 950, text: "  " })),
+      }),
+    ).toBe(false);
+  });
 
-test("失败之后仍有活跃 turnHeader ⇒ false（时间戳守卫）", () => {
-  assert.equal(
-    detect({
-      rows: rows(
-        turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
-        turnHeader({ turnId: "turn-2", startedAt: 1_100, state: "running" }),
-        toolCall({ turnId: TURN_ID, createdAt: 950, status: "success" }),
-      ),
-    }),
-    false,
-  );
-});
+  it("失败之后仍有活跃 turnHeader ⇒ false（时间戳守卫）", () => {
+    expect(
+      detect({
+        rows: rows(
+          turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
+          turnHeader({ turnId: "turn-2", startedAt: 1_100, state: "running" }),
+          toolCall({ turnId: TURN_ID, createdAt: 950, status: "success" }),
+        ),
+      }),
+    ).toBe(false);
+  });
 
-test("phase 非 error ⇒ false；quota 码不匹配 ⇒ false；无 rows ⇒ false", () => {
-  assert.equal(detect({ phase: "running" }), false);
-  assert.equal(detect({ phase: "completedSuccess" }), false);
-  assert.equal(
-    detect({ lastError: lastError({ attribution: { providerErrorCode: "3102" } }) }),
-    false,
-  );
-  assert.equal(detect({ rows: null }), false);
+  it("phase 非 error ⇒ false；quota 码不匹配 ⇒ false；无 rows ⇒ false", () => {
+    expect(detect({ phase: "running" })).toBe(false);
+    expect(detect({ phase: "completedSuccess" })).toBe(false);
+    expect(
+      detect({ lastError: lastError({ attribution: { providerErrorCode: "3102" } }) }),
+    ).toBe(false);
+    expect(detect({ rows: null })).toBe(false);
+  });
 });
