@@ -15,7 +15,7 @@ import type { CommandAck, ConversationSnapshot } from "@zcode/shared/zcode-proto
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
 import { useUsageEntitlementWithService } from "@/hooks/useUsageEntitlement.js";
-import { buildStartPlanEntitlementOptions } from "@/lib/startPlanEntitlementOptions.js";
+import { buildQuotaResumeEntitlementOptions } from "@/lib/quotaResumeEntitlementOptions.js";
 import { formatQuotaResetTime } from "@/lib/codingPlanQuotaPresentation.js";
 import { toast } from "@/components/ui/toast.js";
 import { logger } from "@/logger.js";
@@ -65,11 +65,14 @@ export function useQuotaResume(params: {
   );
 
   const settings = useProviderSettingsView();
-  // providerId 缺省时 helper 返回 enabled:false 的空选项；非 coding-plan 家族
-  // （options.enabled=false）或未检测到 Resume 时不取数。
+  // fork N8：权益身份必须与侧栏一致（entitled access + entitled 指纹）。事故依据：
+  // 旧实现复用 buildStartPlanEntitlementOptions，accountAccess 硬编码 planKind:"start-plan"
+  // 且 refreshOnMount:false —— freshnessKey 无任何共享者、hook 自身也不取数，横幅出现时
+  // 快照永远为 null，Resume 灰置、Auto-Resume 时刻为空（2026-10-12 v3.14.3 dev 实测）。
+  // providerId 缺省或无 zhipu-account 权益时 options.enabled=false，不取数。
   const entitlementOptions = useMemo(
     () =>
-      buildStartPlanEntitlementOptions(
+      buildQuotaResumeEntitlementOptions(
         settings.state.status === "ready" ? settings.state.view : null,
         params.providerId?.trim() ?? "",
       ),
@@ -91,7 +94,8 @@ export function useQuotaResume(params: {
     return matched.length > 0 ? matched : active;
   }, [params.modelId, snapshot]);
 
-  const enabled = snapshot !== null && modelBuckets.length > 0 && !allBucketsExhausted(modelBuckets);
+  const enabled =
+    snapshot !== null && modelBuckets.length > 0 && !allBucketsExhausted(modelBuckets);
 
   // 边界定时器：快照变化即重算；到点 forced refresh 换回服务端事实。
   const previousSnapshotRef = useRef<typeof snapshot>(null);
