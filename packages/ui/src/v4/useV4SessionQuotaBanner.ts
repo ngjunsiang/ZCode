@@ -5,12 +5,8 @@ import { BUILTIN_MODEL_PROVIDER_IDS, isStartPlanModelProviderId } from "@zcode/s
 import type { IUsageStatsService } from "@zcode/services";
 import type { SessionErrorInfo, SessionPhase } from "@zcode/shared/zcode-protocol-v4";
 import { useUsageEntitlementWithService } from "@/hooks/useUsageEntitlement.js";
-import {
-  resolveGlmQuotaBannerBusinessCode,
-  resolveStartPlanConcurrentLimitBannerReason,
-  resolveStartPlanConcurrentLimitBusinessCode,
-  resolveStartPlanQuotaExhaustedBusinessCode,
-} from "@/lib/providerBusinessError.js";
+import { resolveStartPlanConcurrentLimitBannerReason } from "@/lib/providerBusinessError.js";
+import { classifySessionQuotaBannerError } from "@/lib/quotaBannerErrorClassification.js";
 import {
   isMaxCodingPlanSnapshot,
   isTerminalCodingPlanSnapshot,
@@ -62,15 +58,16 @@ export function useV4SessionQuotaBanner(params: {
   const isStartPlanProvider = Boolean(
     activeProviderId && isStartPlanModelProviderId(activeProviderId),
   );
-  const quotaExhaustedCode = resolveStartPlanQuotaExhaustedBusinessCode(
-    params.error?.code,
-    params.error?.message,
-  );
-  const concurrentLimitCode = resolveStartPlanConcurrentLimitBusinessCode(
-    params.error?.code,
-    params.error?.message,
-  );
-  const providerLimitedCode = resolveGlmQuotaBannerBusinessCode(params.error?.code);
+  // fork N10/U39：分类回退 attribution.providerErrorCode —— 冷恢复后外层 code 被
+  // error.name 归纳降级（transcript-hydration 只保留外层码），真实业务码在 attribution；
+  // 与 quotaFailedLastTurn 的冷恢复回退同一语义（spec-resume-turn.md 场景 2 + ADR-013：
+  // 重启后仍配额失败的会话必须重新出现 Resume/Auto-Resume 横幅）。
+  const { quotaExhaustedCode, concurrentLimitCode, providerLimitedCode } =
+    classifySessionQuotaBannerError({
+      code: params.error?.code,
+      message: params.error?.message,
+      attributionProviderErrorCode: params.error?.attribution?.providerErrorCode,
+    });
   const serverQuotaExhausted = quotaExhaustedCode === "1005" && isStartPlanProvider;
   const serverConcurrentLimited = Boolean(concurrentLimitCode) && isStartPlanProvider;
   const serverProviderLimited = Boolean(
