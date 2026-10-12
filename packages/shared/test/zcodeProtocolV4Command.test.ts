@@ -656,6 +656,8 @@ describe("zcode-protocol-v4 command", () => {
         "pauseGoal",
         "reorderQueueItem",
         "resumeGoal",
+        // fork U36：resumeTurn 与 retryTurn 同为 CAS 命令（重建会话上校验 revision）。
+        "resumeTurn",
         "retryTurn",
         "sendQueuedNow",
         "setAssistantFeedback",

@@ -8,8 +8,10 @@ const editViewSource = await readFile(
 
 describe("automation schedule input height", () => {
   it("keeps every schedule state at 36px without wrapping added tags", () => {
+    // fork U37：Auto-Resume 在该三元外加了 `lockDefinition ? null :` 守卫，
+    // `{` 前缀不再是稳定锚点；去掉前缀，vendor/fork 两种形状都能命中。
     const readOnlyStart = editViewSource.indexOf(
-      "{preserveSessionCreatedSchedule ? (",
+      "preserveSessionCreatedSchedule ? (",
     );
     const addScheduleStart = editViewSource.indexOf(
       "{scheduleRemoved ? (",
