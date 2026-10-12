@@ -1,0 +1,95 @@
+// fork N11：classifySessionQuotaBannerError 冷恢复归因回退单测。
+// 决策依据：ADR-013（用户裁定 2026-10-12）——重启后仍配额失败的会话必须重新出现
+// Resume/Auto-Resume 横幅。冷恢复形状（transcript-hydration）：外层 code 被 error.name
+// 归纳降级，真实业务码只在 attribution.providerErrorCode；message 原文保留。
+// 回归锁：横幅分类与检测谓词（isQuotaClassifiedLastError）使用同一回退语义。
+import assert from "node:assert/strict";
+import test from "node:test";
+import { classifySessionQuotaBannerError } from "../src/lib/quotaBannerErrorClassification.js";
+
+test("live 形状：外层 code 直接命中（1308 → provider-limited），行为不变", () => {
+  const result = classifySessionQuotaBannerError({
+    code: "1308",
+    message: "[1308][Usage limit reached for 5 hour. Your limit will reset at …][…]",
+  });
+  assert.equal(result.providerLimitedCode, "1308");
+  assert.equal(result.quotaExhaustedCode, undefined);
+  assert.equal(result.concurrentLimitCode, undefined);
+});
+
+test("冷恢复形状：外层 code 降级 + attribution 1308 → provider-limited（本次修复的回归锁）", () => {
+  const result = classifySessionQuotaBannerError({
+    code: "Error",
+    message: "[1308][Usage limit reached for 5 hour. Your limit will reset at …]",
+    attributionProviderErrorCode: "1308",
+  });
+  assert.equal(result.providerLimitedCode, "1308");
+  assert.equal(result.quotaExhaustedCode, undefined);
+  assert.equal(result.concurrentLimitCode, undefined);
+});
+
+test("冷恢复形状：attribution 1005 → daily-exhausted 族；3008 → concurrent 族", () => {
+  const exhausted = classifySessionQuotaBannerError({
+    code: "PROVIDER_BUSINESS_ERROR",
+    message: "exceed quota limit",
+    attributionProviderErrorCode: "1005",
+  });
+  assert.equal(exhausted.quotaExhaustedCode, "1005");
+  assert.equal(exhausted.providerLimitedCode, undefined);
+  assert.equal(exhausted.concurrentLimitCode, undefined);
+
+  const concurrent = classifySessionQuotaBannerError({
+    code: "unknown_error",
+    message: "model concurrency limit exceeded",
+    attributionProviderErrorCode: "3009",
+  });
+  assert.equal(concurrent.concurrentLimitCode, "3009");
+  assert.equal(concurrent.quotaExhaustedCode, undefined);
+});
+
+test("槽位独立：直接 code 命中的槽位优先，未命中槽位由归因回填", () => {
+  const result = classifySessionQuotaBannerError({
+    code: "1308",
+    attributionProviderErrorCode: "1005",
+  });
+  // provider-limited 槽位：直接 code 1308 直接命中，不经归因。
+  assert.equal(result.providerLimitedCode, "1308");
+  // quota-exhausted 槽位：直接 code 未命中，归因 1005 回填（矛盾合成输入；
+  // 真实错误里 code 与归因同源，横幅优先级只在多类同时命中时裁决）。
+  assert.equal(result.quotaExhaustedCode, "1005");
+});
+
+test("互不串扰：1308 归因 + 包装码 + 中性文案只命中 provider-limited", () => {
+  const result = classifySessionQuotaBannerError({
+    code: "unknown_error",
+    message: "[1308][Usage limit reached for 5 hour. Your limit will reset at 2026-10-12 19:47:45]",
+    attributionProviderErrorCode: "1308",
+  });
+  assert.equal(result.providerLimitedCode, "1308");
+  // 1005/并发族未被任何来源（外层 code、归因码、文案模式）命中。
+  assert.equal(result.quotaExhaustedCode, undefined);
+  assert.equal(result.concurrentLimitCode, undefined);
+});
+
+test("上游文案启发式保持原样：包装码 + “quota exceeded”文案仍由直接分类判 1005（非本 helper 引入）", () => {
+  const result = classifySessionQuotaBannerError({
+    code: "unknown_error",
+    message: "quota exceeded",
+    attributionProviderErrorCode: "1308",
+  });
+  // 直接分类（code+message）与归因回填按槽位独立生效：矛盾合成输入下两类都可命中，
+  // 由 buildSessionQuotaBannerState 的既有优先级（daily-exhausted > provider-limited）裁决。
+  // 真实 1308 文案（“Usage limit reached…”）不含 1005 启发式词，不会出现该组合。
+  assert.equal(result.quotaExhaustedCode, "1005");
+  assert.equal(result.providerLimitedCode, "1308");
+});
+
+test("无可分类事实 → 三类均为 undefined（横幅不接管，原始错误提示照常显示）", () => {
+  const result = classifySessionQuotaBannerError({
+    code: "Error",
+    message: "boom",
+  });
+  assert.equal(result.providerLimitedCode, undefined);
+  assert.equal(result.quotaExhaustedCode, undefined);
+  assert.equal(result.concurrentLimitCode, undefined);
+});
