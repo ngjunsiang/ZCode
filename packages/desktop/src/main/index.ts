@@ -13,6 +13,7 @@ import { installRequestSecurityDiagnostics } from "./request-security-edition/in
 import { createLocalTtftExporter } from "./localTtftExporter.js";
 /* eslint-disable max-lines */
 import "./desktopEarlyDataBaseDirBootstrap.js";
+import { requestAppRelaunch } from "./appRelaunch.js";
 import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
@@ -1772,7 +1773,7 @@ async function executeDesktopCommandForApp(
     zcodeEndpointEnvBaseOrigin: resolveZCodeEndpointEnvBaseOrigin(hostProcessLocalEnv),
     onRelaunchApp: async () => {
       await prepareAppQuit("desktop-command-relaunch");
-      app.relaunch();
+      requestAppRelaunch({ logger });
       app.quit();
     },
     beforeClearAllData: () => prepareAppQuit("desktop-command-clear-all-data"),
