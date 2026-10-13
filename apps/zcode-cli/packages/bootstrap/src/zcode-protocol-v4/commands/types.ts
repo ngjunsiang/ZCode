@@ -19,6 +19,8 @@ import type {
   CommandPayloadMap,
   ConversationInputIntent,
   QueueItem,
+  SessionErrorInfo,
+  SessionPhase,
   StableForkTarget,
   StableForkTargetResolution,
   ConversationRowTarget,
@@ -137,6 +139,16 @@ export interface V4CommandCoreHost {
   getInputRoutingMode?(
     sessionId: string,
   ): "startNow" | "enqueue" | "guide" | "reject" | "choice" | null;
+  /**
+   * v4 投影 control 窄视图（fork resumeTurn 冷恢复回退用，ADR-014）。
+   * 数据源 = v4 publisher snapshot.control——冷恢复时 transcript-hydration 从持久化
+   * transcript 重建终态事实；core projection 的内存 eventStore 重启后不保留 TurnError。
+   * 会话无 publisher / 从未订阅 → null（handler 按无失败终态处理，行为同 ADR-014 前）。
+   * 过渡归宿：v4 原生读面（与 getInputRoutingMode 同类，非过渡钩子）。
+   */
+  getConversationControl?(
+    sessionId: string,
+  ): { phase: SessionPhase; lastError: SessionErrorInfo | null } | null;
   /** runtime event notification 后，等待目标 event 真正完成 reorder drain + projection apply。 */
   waitForProjectionEventCommit?(
     sessionId: string,
