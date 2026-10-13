@@ -2664,6 +2664,16 @@ export class ConversationV4Gateway {
     return this.publishers.get(sessionId)?.getSnapshot().inputRouting.mode ?? null;
   }
 
+  /**
+   * fork resumeTurn 冷恢复回退（ADR-014）：v4 投影 control 的窄读面。
+   * 冷恢复时 transcript-hydration 把持久化 transcript 的失败终态重建进 v4 投影，
+   * 而 core projection 的内存 eventStore 重启后不保留 TurnError；命令层守卫经此
+   * 读到与渲染端 Resume 横幅同一份「最后一轮失败」事实。无 publisher → null。
+   */
+  getConversationControl(sessionId: string): ConversationSnapshot["control"] | null {
+    return this.publishers.get(sessionId)?.getSnapshot().control ?? null;
+  }
+
   getSessionFollowupMode(sessionId: string): "queue" | "guide" | null {
     return this.publishers.get(sessionId)?.getSnapshot().config.followupMode ?? null;
   }

@@ -1079,6 +1079,10 @@ export function createConversationV4Gateway(
     },
     // held choice 裁决（heldQueueInputRequiresChoice）：读投影 inputRouting.mode。
     getInputRoutingMode: (sessionId) => context.v4Gateway?.getInputRoutingMode(sessionId) ?? null,
+    // fork resumeTurn 冷恢复回退（ADR-014）：读 v4 投影 control（数据源 = publisher
+    // snapshot）。gateway 缺席时按无失败终态处理，行为同 ADR-014 之前。
+    getConversationControl: (sessionId) =>
+      context.v4Gateway?.getConversationControl(sessionId) ?? null,
     // rowId→messageId 翻译面（fork/edit/retry 的定位决策，数据源 = v4 投影）：
     // 惰性走 gateway 的投影查表。
     getMessageIdForRow: (sessionId, rowId) =>
