@@ -105,15 +105,29 @@ async function resumeTurn(
   if (record.app.runtime.hasActiveOrQueuedTurnWork()) {
     throw new V4ResumeNotIdleError();
   }
-  // core projection 是事件权威重放：status "error" ⇒ 最后一个终态轮失败；
-  // 新 turn 一开始即翻回 "running"，无需额外时序窗。
+  // core projection 是 live 会话的事件权威重放：status "error" ⇒ 最后一个终态轮失败；
+  // 新 turn 一开始即翻回 "running"，无需额外时序窗。但 eventStore 只在内存
+  // （createInMemorySessionEventStore），TurnError 事件不持久化：应用重启冷恢复后
+  // 投影不再携带失败终态，而 v4 投影由 transcript-hydration 从持久化 transcript
+  // 重建了它（control.phase="error" + lastError，与渲染端 Resume 横幅同一事实源）。
+  // 因此投影不带失败时回退读 v4 control——两个消费者不得对「最后一轮是否失败」
+  // 得出相反结论（2026-10-13 guard.resumeNoFailedTurn 事故，ADR-014）。
+  // live 优先：投影 error 时仍以投影为准，不经 v4 投影兜底；误开新轮由
+  // hasActiveOrQueuedTurnWork + CAS revision 双闸拦下，与此处时序无关。
   const projection = await record.app.runtime.getProjection();
-  if (projection.status !== "error" || !projection.lastError) {
+  const coldControl = host.getConversationControl?.(record.app.sessionId) ?? null;
+  const lastError =
+    projection.status === "error" && projection.lastError
+      ? projection.lastError
+      : coldControl?.phase === "error"
+        ? coldControl.lastError
+        : null;
+  if (!lastError) {
     throw new V4ResumeNoFailedTurnError();
   }
-  const providerCode = projection.lastError.attribution?.providerErrorCode;
-  if (!isQuotaClassifiedLastError(projection.lastError)) {
-    throw new V4ResumeNotQuotaFailedError(providerCode ?? projection.lastError.code);
+  const providerCode = lastError.attribution?.providerErrorCode;
+  if (!isQuotaClassifiedLastError(lastError)) {
+    throw new V4ResumeNotQuotaFailedError(providerCode ?? lastError.code);
   }
   await host.ensureModelReady?.(record);
 
@@ -159,7 +173,7 @@ async function resumeTurn(
     commandId: envelope.commandId,
     event: RESUME_TURN_COMPLETED_EVENT,
     inputId: envelope.commandId,
-    lastErrorCode: projection.lastError.code,
+    lastErrorCode: lastError.code,
     module: CONVERSATION_COMMAND_LOG_MODULE,
     providerCode: providerCode ?? null,
     sessionId: record.app.sessionId,

@@ -2,6 +2,9 @@
 // handler 依赖全部经 fake 注入（host.getRecord / record.app.runtime / projection），
 // 断言：busy / 非失败终态 / 非配额码三类拒绝，配额码（含 attribution 回退）派发
 // model-only 续跑轮并解除队列暂停。
+// ADR-014（2026-10-13）：失败事实源 = core projection（live 权威）优先，冷恢复时
+// 回退 host.getConversationControl（v4 投影 control，transcript-hydration 重建）。
+// 不注入该钩子的用例同时证明「无钩子宿主行为不变」。
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -36,9 +39,20 @@ interface ProjectionStub {
   } | null;
 }
 
+/** v4 投影 control 窄视图（ADR-014 冷恢复回退事实源）。 */
+interface ControlStub {
+  phase: string;
+  lastError?: {
+    code?: string;
+    message?: string;
+    attribution?: { providerErrorCode?: string };
+  } | null;
+}
+
 function makeFixture(options: {
   busy?: boolean;
   projection?: ProjectionStub;
+  conversationControl?: ControlStub | null;
   executeTurnError?: Error;
 }): Fixture {
   const calls: RecordedCall[] = [];
@@ -65,6 +79,9 @@ function makeFixture(options: {
   } as unknown as V4SessionRecordView;
   const host = {
     getRecord: (sessionId: string) => (sessionId === "session-1" ? record : undefined),
+    ...(options.conversationControl === undefined
+      ? {}
+      : { getConversationControl: () => options.conversationControl ?? null }),
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -202,4 +219,77 @@ test("GLM 1321 与 insufficient_quota 家族均在配额词表内", async () => 
     const result = await resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope());
     assert.equal(result, undefined, providerCode);
   }
+});
+
+// ── ADR-014（2026-10-13）：冷恢复回退矩阵 ──────────────────────────
+
+test("冷恢复：投影丢失失败终态时回退 v4 control（配额码经 attribution）→ 派发续跑轮", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    conversationControl: {
+      phase: "error",
+      lastError: {
+        code: "Error",
+        message: "quota exceeded",
+        attribution: { providerErrorCode: "1005" },
+      },
+    },
+  });
+  const result = await resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope());
+  assert.equal(result, undefined);
+  const dispatch = fixture.calls.find((call) => call.fn === "executeTurn");
+  assert.ok(dispatch);
+  const [prompt, , options] = dispatch.args as [string, unknown, Record<string, unknown>];
+  assert.ok(prompt.includes("usage limit"));
+  assert.equal(options.inputVisibility, "model-only");
+  assert.ok(fixture.calls.some((call) => call.fn === "setQueueAutoDrain"));
+});
+
+test("冷恢复回退仍执行配额词表校验：3008 → guard.resumeNotQuotaFailed", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    conversationControl: {
+      phase: "error",
+      lastError: { code: "Error", attribution: { providerErrorCode: "3008" } },
+    },
+  });
+  const reason = await rejectionOf(() =>
+    resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope()),
+  );
+  assert.equal(reason, "guard.resumeNotQuotaFailed");
+});
+
+test("冷恢复回退非失败终态（phase idle）→ guard.resumeNoFailedTurn", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    conversationControl: { phase: "idle", lastError: null },
+  });
+  const reason = await rejectionOf(() =>
+    resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope()),
+  );
+  assert.equal(reason, "guard.resumeNoFailedTurn");
+});
+
+test("冷恢复回退 phase error 但 lastError 缺失 → guard.resumeNoFailedTurn", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    conversationControl: { phase: "error", lastError: null },
+  });
+  const reason = await rejectionOf(() =>
+    resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope()),
+  );
+  assert.equal(reason, "guard.resumeNoFailedTurn");
+});
+
+test("live 优先：投影 error 仍以投影为准，不被陈旧 control 否决", async () => {
+  const fixture = makeFixture({
+    projection: {
+      status: "error",
+      lastError: { code: "model_request_failed", attribution: { providerErrorCode: "1313" } },
+    },
+    conversationControl: { phase: "idle", lastError: null },
+  });
+  const result = await resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope());
+  assert.equal(result, undefined);
+  assert.ok(fixture.calls.some((call) => call.fn === "executeTurn"));
 });
