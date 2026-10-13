@@ -106,8 +106,12 @@ async function waitForReady() {
   }
 }
 
-const rendererUrl = await waitForReady();
-console.log("[dev] Starting Electron...");
+// 与 packages/desktop/src/main/appRelaunch.ts 的 DEV_SUPERVISED_RELAUNCH_EXIT_CODE 对应：
+// 应用内“重启”（退出登录重启 / 清数据重启 / dev 自动更新安装）在 dev 构建下以该退出码退出，
+// 由本脚本在 Vite/tsup 工具链保持运行的前提下重新拉起 Electron。此前直接用 Electron 的
+// app.relaunch()，重拉出的孤儿 Electron 会在 concurrently -k 杀掉 Vite 后加载不到
+// http://localhost:5174（ERR_CONNECTION_REFUSED），表现为空白窗口、只能从托盘退出。
+const DEV_SUPERVISED_RELAUNCH_EXIT_CODE = 75;
 
 const electronBinary = resolveLocalElectronBinary();
 let electronCommand = existsSync(electronBinary) ? electronBinary : "electron";
@@ -129,21 +133,14 @@ if (process.platform === "darwin" && existsSync(electronBinary)) {
   console.log(`[dev] Prepared macOS ZCode Dev bundle: ${devBundle.appPath}`);
 }
 
-const electron = spawn(electronCommand, ["."], {
-  cwd: root,
-  stdio: "inherit",
-  env: { ...process.env, ELECTRON_RENDERER_URL: rendererUrl },
-  windowsHide: true,
-  detached: process.platform !== "win32",
-});
-
+let electron = null;
 let electronClosed = false;
 let shuttingDown = false;
 let forceKillTimer;
 let hardExitTimer;
 
 function signalElectronTree(signal) {
-  if (electronClosed || !electron.pid) {
+  if (electronClosed || !electron?.pid) {
     return;
   }
 
@@ -160,7 +157,7 @@ function signalElectronTree(signal) {
 }
 
 function forceKillElectronTree() {
-  if (electronClosed || !electron.pid) {
+  if (electronClosed || !electron?.pid) {
     return;
   }
 
@@ -195,17 +192,43 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.once(signal, () => shutdownFromSignal(signal));
 }
 
-electron.on("error", (error) => {
-  console.error("[dev] Failed to start Electron:", error);
-  process.exit(1);
-});
-
-electron.on("close", (code, signal) => {
-  electronClosed = true;
-  clearTimeout(forceKillTimer);
-  clearTimeout(hardExitTimer);
+async function startElectron() {
+  // 重启路径也要重新探测 ready 条件：工具链仍在时立刻通过；若 Vite 意外退出，
+  // 停在可见的等待日志而不是拉起加载不到 renderer 的空白窗口。
+  const rendererUrl = await waitForReady();
   if (shuttingDown) {
-    process.exit(0);
+    return;
   }
-  process.exit(code ?? (signal ? 1 : 0));
-});
+  console.log("[dev] Starting Electron...");
+  electronClosed = false;
+  const child = spawn(electronCommand, ["."], {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, ELECTRON_RENDERER_URL: rendererUrl },
+    windowsHide: true,
+    detached: process.platform !== "win32",
+  });
+  electron = child;
+
+  child.on("error", (error) => {
+    console.error("[dev] Failed to start Electron:", error);
+    process.exit(1);
+  });
+
+  child.on("close", (code, signal) => {
+    electronClosed = true;
+    clearTimeout(forceKillTimer);
+    clearTimeout(hardExitTimer);
+    if (shuttingDown) {
+      process.exit(0);
+    }
+    if (code === DEV_SUPERVISED_RELAUNCH_EXIT_CODE) {
+      console.log("[dev] App requested relaunch, restarting Electron (dev toolchain stays up)...");
+      void startElectron();
+      return;
+    }
+    process.exit(code ?? (signal ? 1 : 0));
+  });
+}
+
+await startElectron();
