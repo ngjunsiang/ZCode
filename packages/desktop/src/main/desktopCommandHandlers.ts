@@ -21,6 +21,7 @@ import {
   resolveZCodeEndpointOrigin,
 } from "@zcode/shared";
 import { readZCodeStdioTapDevState, setZCodeStdioTapDevEnabled } from "@zcode/services/node";
+import { requestAppRelaunch } from "./appRelaunch.js";
 import { showAboutDialog } from "./about.js";
 import { checkForUpdateMenuClick } from "./autoUpdater.js";
 import { exportLogs } from "./exportLogs.js";
@@ -125,7 +126,9 @@ async function clearAllDataAndRelaunch(options: {
     options.logger.error("[clear-all-data] failed to clear session data:", error);
   }
 
-  app.relaunch();
+  // dev 构建不能用 app.relaunch()：重拉的孤儿 Electron 加载不到 renderer dev server，
+  // 会留下空白窗口（详见 requestAppRelaunch 注释）；dev 交给 dev.mjs 监督重启。
+  requestAppRelaunch({ logger: options.logger });
   app.exit(0);
 }
 

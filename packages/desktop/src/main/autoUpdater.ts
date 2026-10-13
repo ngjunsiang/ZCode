@@ -18,6 +18,7 @@ import {
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import pkg, { CancellationToken } from "electron-updater";
 import semver from "semver";
+import { requestAppRelaunch } from "./appRelaunch.js";
 import { logger } from "./logger.js";
 import { getElectronReleasePlatform, ManifestUpdateProvider } from "./manifestUpdateProvider.js";
 const { autoUpdater } = pkg;
@@ -459,7 +460,9 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
       // 未打包应用没有可被安装器接管的真实发布包上下文。这里改为重启当前 dev app，
       // 避免点击“重启以更新”执行退出准备后停在无响应状态。
       logger.info("[auto-update] dev update install fallback: relaunch app");
-      app.relaunch();
+      // dev 构建不能用 app.relaunch()：会绕开 concurrently/vite 工具链拉起孤儿 Electron，
+      // 加载不到 renderer dev server（详见 requestAppRelaunch 注释）。交给 dev.mjs 重启。
+      requestAppRelaunch({ logger });
       app.exit(0);
       return;
     }
