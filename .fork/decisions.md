@@ -557,3 +557,43 @@ keying (needs a new renderer data path; see bench README).
 **Not contributed upstream.** zai-org/ZCode has no intake channel (issues
 disabled, zero PRs ever, no CONTRIBUTING — verified 2026-10-14); this lives as
 a fork patch on both patch branches.
+
+
+## ADR-023: server-side replay of terminal output before first subscriber  {2026-10-14}
+
+**Context.** Phone/browser remote-control terminals opened blank (only
+xterm's block cursor; user-confirmed that pressing Enter produced a fresh
+prompt). Root cause is an upstream structural race, not a fork regression:
+`terminalService.create()` spawns the PTY inside the RPC, and the shell's
+prompt is emitted into `onDynamicData` — a *dynamic* event explicitly excluded
+from `ProxyChannel`'s `bufferEvent` — while the renderer only subscribes after
+the create roundtrip returns, and `ChannelClient` sends `EventListen` only on
+first subscription (one more roundtrip). `Emitter.fire` with zero listeners
+drops the bytes. Locally the window is sub-millisecond (invisible); over
+SSH/relay links it exceeds any shell's prompt latency, so the entire prompt is
+swallowed. Evidence chain in `.fork/spec-terminal-output-replay.md`.
+
+**Decision.** Buffer server-side at the single owner
+(`createTerminalService`): while no listener exists, PTY output accumulates in
+`pendingData`; the data Emitter's `onWillAddFirstListener` (foundation.ts
+registers the listener before firing the hook) replays the joined buffer
+synchronously to the first `onDynamicData(id)` subscriber;
+`onDidRemoveLastListener` re-enters buffer mode, which also repairs
+reconnect-gap loss for free. No protocol change; all clients (local
+MessagePort, remote workspace, web relay) inherit it. U49 + N15 (vitest with a
+mocked node-pty through the public factory).
+
+**Deliberately not fixed** (documented in spec rule 4): fast-exit edge (shell
+exits before subscribe → `Terminal not found` throw inside
+`ChannelServer.onEventListen`, no try/catch upstream) and the exit event's
+identical first-subscriber race — both pre-existing, no new fallback branches
+(AGENTS.md). Buffer is uncapped but only spans create→subscribe / disconnect
+gaps, bounded in practice by shell startup output.
+
+**Not contributed upstream.** Same intake situation as ADR-022; lives as a
+fork patch on both patch branches.
+
+**Verification.** vitest 5/5 (N15); typecheck clean; oxlint 0 errors / 0
+warnings on changed files; architecture:check 0 violations. The 5 pre-existing
+"No test suite found" failures under raw `vitest run packages/services/test/`
+reproduce identically without the patch (ADR-011 node:test leftovers).
