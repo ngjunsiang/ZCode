@@ -23,6 +23,8 @@ import {
 } from "@zcode/shared";
 import type { MainToSchedulerMessage, SchedulerToMainMessage } from "./schedulerProtocol.js";
 import { settleManualClaimForDispatchResult } from "./manualClaimRelease.js";
+// fork ADR-017：misfire 判定纯函数拆出（本文件是 utilityProcess 入口，需可单测）。
+import { isMisfireClaim } from "./misfire.js";
 import { settleOffPeakDispatchResult } from "./offPeakDispatchSettlement.js";
 import {
   startSchedulerResourceTelemetry,
@@ -135,11 +137,16 @@ async function handleClaimed(automation: ZCodeAutomation, now: number): Promise<
     workspacePath: automation.workspacePath,
     workspaceIdentity: automation.workspaceIdentity,
   });
-  const isRetry = automation.dispatchAttempts > 0;
 
   // misfire：首轮（非重试）且计划触发时间已远早于 now → 认定错过窗口，跳过不补跑。
-  const missed =
-    !isRetry && automation.nextRunAt != null && automation.nextRunAt <= now - MISFIRE_GRACE_MS;
+  // 重试认领的识别见 isMisfireClaim（ADR-017：retry_at 认领 = 重臂重试，不计 attempts）。
+  const missed = isMisfireClaim({
+    dispatchAttempts: automation.dispatchAttempts,
+    retryAt: automation.retryAt,
+    nextRunAt: automation.nextRunAt,
+    now,
+    graceMs: MISFIRE_GRACE_MS,
+  });
   if (missed) {
     // 纯一次性任务（如 delayMinutes 落成的 minute scheduleRule）错过窗口后，
     // 通用重算会给出 anchorAt + k*interval 的下一周期，让“只跑一次”的提醒在后续周期
