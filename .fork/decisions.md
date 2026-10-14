@@ -424,3 +424,116 @@ it describes; numbering is a single stream going forward (retire the "Windows
 .fork 编号" cross-map column when convenient). Accepted trade-off: origin is a
 public fork (GitHub forks of public repos cannot be private), so decisions/bench
 notes are world-readable — reviewed, nothing credential-like.
+
+## ADR-018: Auto-Resume decoupled from the committed-work rule (step-1 failures)  {ported 2026-10-14; Windows-lineage "ADR-015"}
+
+2026-10-13, user decision ("Accepted"), incident-driven: two sessions failed
+with the same `[1308]` 5-hour-limit error; the one that failed at step 1 (no
+committed work — prompt + error only, 66 ms) showed **no buttons at all**,
+because the Auto-Resume button renders only inside the banner gated on the full
+`quotaFailedLastTurn` predicate, whose committed-work rule (ADR-009) missed it.
+The user wants Auto-Resume on every quota-failed session pre-reset.
+
+Decision: split the renderer detection. `quotaFailedLastTurnForAutoResume`
+keeps the shared guards (error phase + quota vocabulary + no newer active turn
+after the failure) and drops only the committed-work check;
+`quotaFailedLastTurn` keeps its exact semantics and delegates to it.
+`useQuotaResume` detects with the weaker predicate and reports a new
+`resumeApplicable` flag (full predicate); the banner renders the Resume button
+only when `resumeApplicable` (PATCHES U44). ADR-009 is **narrowed to the
+Resume button** — its rationale ("retry adds nothing Resume could offer") never
+covered scheduling. No CLI change: the `resumeTurn` guard never required
+committed work. Manual path preserved: after a step-1 failure the prompt is
+still the latest editable user row (`isLatestEditableUserRow`).
+
+Spec: `spec-resume-turn.md` product rule 1 + scenario 3;
+`spec-auto-resume.md` product rule 1. Landed 4afd0df4 (2026-10-14).
+
+## ADR-019: Auto-Resume visibility keyed to the reset boundary, not availability  {ported 2026-10-14; Windows-lineage "ADR-016"}
+
+2026-10-13, user decision (rule stated: "reset time not reached ⇒ all sessions
+show Auto-Resume"). The provider's enforcement and entitlement planes
+contradicted each other **twice** that day — a `[1308]` claiming "reset at
+15:42:03" (12:29) was served anyway from 12:33; another claiming "reset at
+21:37:19" (16:58, sess_1c089f46) was followed by successful turns 16:58–17:08.
+The old gate `!quotaResume.enabled` ("reset unconfirmed" = snapshot reports
+availability) hid the affordance exactly when the user had just watched the
+limit fire.
+
+Decision: key Auto-Resume visibility to the **failure's server reset boundary**
+(`quotaResume.nextResetAt !== null`) or an already-scheduled automation — not
+to entitlement availability (PATCHES U45). `enabled` governs only the Resume
+button's un-grey. The buttons may coexist; manual resume cancels the scheduled
+automation; a stale dispatch is guard-rejected and scheduler-settled.
+**Supersedes the visibility half of `spec-auto-resume.md` acceptance scenario
+5.** Landed 3d31d0f1 (2026-10-14).
+
+## ADR-020: re-arm retries are exempt from the scheduler misfire guard  {ported 2026-10-14; Windows-lineage "ADR-017"}
+
+2026-10-13 night, incident-driven: both Auto-Resume automations fired at
+21:38:57; the host quota precheck found the snapshot degenerate (only the
+just-expired 5h bucket — no active buckets, no future boundary ⇒
+`quotaAvailable: undefined` ⇒ conservative re-arm to 21:53:58 per the +15 min
+step); at 21:53:57/21:54:17 the scheduler claimed the re-armed rows and
+skipped them as missed windows, finalized one-shot — `Ran 0 times`, never
+dispatched.
+
+Root cause: `markDispatchRetryAt` deliberately does not count attempts
+(horizon is the host's decision) and only pushes `retry_at`, while `claimDue`
+claims retry-state rows by `retry_at` and leaves `next_run_at` unchanged
+(stable runId). `handleClaimed` computed `isRetry = dispatchAttempts > 0` —
+false for re-arms — so the misfire guard compared the **original** window
+against now−5 min. Re-arm step (15 min) > `MISFIRE_GRACE_MS` (5 min): every
+quota re-arm was guaranteed misfire-killed.
+
+Decision: misfire is a property of *why the row was claimed*. A claim carrying
+`retry_at` is a retry by definition and skips the misfire check, same as
+backoff retries. Extracted as the pure `isMisfireClaim` helper
+(PATCHES U46 + N13; `scheduler/index.ts` is a utilityProcess entry and cannot
+be imported by tests). Accepted: a re-armed row claimed very late still
+dispatches — the host precheck re-evaluates quota and the CLI guard
+re-validates the failure state; the horizon bounds repeated unavailability.
+Ledger cosmetics (generic skip reason string overwriting the re-arm record)
+noted, not fixed. Landed 2ecb2c4e (2026-10-14).
+
+## ADR-021: dev builds don't self-relaunch — dev.mjs supervises restarts via exit code 75  {2026-10-14; Windows-lineage "ADR-017"}
+
+2026-10-13, user report from the Windows dev build: "Disconnect and restart"
+quit the old instance cleanly but left a blank grey window that had to be
+exited via the tray. Log evidence: every `desktop-command-relaunch` produced a
+new pid logging `renderer did-fail-load -102 ERR_CONNECTION_REFUSED` for
+`http://localhost:5174`.
+
+Root cause: Electron's `app.relaunch()` re-spawns a bare `electron.exe` after
+exit, bypassing the dev toolchain (`concurrently -k` + tsup watch + vite +
+`scripts/dev.mjs`). When the old instance exits, dev.mjs exits and
+`concurrently -k` kills Vite, so the orphaned relaunched Electron cannot load
+the renderer. Packaged builds are unaffected (renderer loads from disk). Same
+defect in the dev auto-update install fallback and Clear All Data.
+
+Decision: dev builds never self-relaunch. Main gains `requestAppRelaunch()`
+(`packages/desktop/src/main/appRelaunch.ts`): packaged keeps `app.relaunch()`
+(byte-identical behavior); dev exits with `DEV_SUPERVISED_RELAUNCH_EXIT_CODE`
+(75), and `scripts/dev.mjs` detects 75 on close and re-runs `startElectron()`
+— re-probing build markers/Vite first, so a dead dev server parks at a visible
+wait log instead of a blank window; Vite/tsup stay up across restarts. All
+three call sites (RelaunchApp command, dev update install fallback, Clear All
+Data) go through the helper. Respawn logic is platform-neutral (Linux dev uses
+the same dev.mjs path).
+
+Alternatives rejected: keep `app.relaunch()` in dev (orphaned instance, blank
+window); renderer reload instead of a real restart after `prepareAppQuit`
+(hosts are already disposed by the barrier); blind respawn in dev.mjs
+regardless of exit code (would mask real crashes — the exit-code gate keeps
+them fatal).
+
+Provenance: first committed in the `Zcode-dev-relaunch` worktree as
+Windows-lineage "ADR-017" (60c6f626) while the branch independently took
+017-020; rebased and renumbered under single-stream numbering. Landed 8f4bc30d,
+ff-merged into patch/3.14.3 (2026-10-14).
+
+Verification: pnpm typecheck clean; desktop oxlint 0 errors, warnings match
+baseline (none in new code); architecture:check 0 violations; oxfmt clean on
+changed files. No unit-test infra for desktop main/scripts — manual
+verification. User-verified on Windows 2026-10-14. Revisit trigger: if
+supervised respawn misbehaves on Linux (untested there).

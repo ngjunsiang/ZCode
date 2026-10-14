@@ -10,11 +10,19 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
 
 1. **Button pair.** While a quota-interrupted session shows the Resume banner:
    - `Resume` — disabled (greyed) until a refreshed server entitlement snapshot
-     confirms the reset (unchanged from `spec-resume-turn.md` rules 2–3).
-   - `Auto-Resume at <reset time>` — visible while the reset is *not yet* confirmed
-     and the session has no active auto-resume automation. When the snapshot
-     confirms reset, this button disappears (Resume enables). If the snapshot has
-     no `nextResetTime`, the button is greyed with a tooltip (never guesses).
+     confirms the reset (unchanged from `spec-resume-turn.md` rules 2–3). Requires
+     committed work in the failed turn (ADR-018 narrowed ADR-009 to this button).
+   - `Auto-Resume at <reset time>` — visible while the failure's server reset
+     boundary is still in the future (`nextResetAt !== null`) or while an
+     automation is scheduled, and the session has no active auto-resume
+     automation. **Visibility is boundary-keyed, not availability-keyed
+     (ADR-019):** entitlement reporting availability does NOT hide it —
+     enforcement and the entitlement endpoint contradicted each other twice on
+     2026-10-13. The buttons may coexist; a successful manual resume cancels the
+     scheduled automation. Detection uses the weaker predicate (no
+     committed-work requirement — step-1 failures get an Auto-Resume-only
+     banner, ADR-018). If the snapshot has no `nextResetTime`, the button is
+     greyed with a tooltip (never guesses).
      Desktop-only: hidden on phone/web-remote (no automation RPC there).
 2. **Click** schedules a **one-shot automation bound to the session**:
    `action: "resumeTurn"`, `targetTaskId: sessionId`, `recurring: false` via
@@ -36,7 +44,13 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
    dispatch failures alike) are bounded by a horizon of
    `run.scheduledAt + 1 h`; past it the run is settled permanent-failed. Resume-kind
    is exempt from the 5-attempt `DISPATCH_MAX_ATTEMPTS` cap (the horizon replaces it).
-   The 5-minute misfire grace is unchanged and inherited (boot within grace fires).
+   The 5-minute misfire grace is unchanged and inherited for first fires (boot
+   within grace fires). **Re-arm retries are exempt from the misfire guard
+   (ADR-020):** a claim carrying `retry_at` is a retry by definition — the guard
+   would otherwise compare the original `next_run_at` against now−grace and kill
+   every re-arm longer than 5 minutes (2026-10-13 21:53 incident: both
+   automations died `Ran 0 times` without dispatching). Late re-arm dispatches
+   remain bounded by the horizon and re-validated by the CLI guard.
 5. **Every terminal settlement deletes the automation** {Confirmed 2026-10-11}.
    - `resumeTurn` ACK accepted → "completed": automation row deleted.
      Run history rows are retained (repo delete never cascades) but the card is gone.
@@ -133,9 +147,13 @@ archive/delete session ─▶ deleteResumeAutomationForTask (resume-kind only)
 4. **Horizon exhaustion**: no reset time in snapshots → 15-min re-arms → at
    scheduledAt+1h permanent-failed: run failed, automation deleted; manual Resume
    still available.
-5. **Reset arrives early**: Resume enables, Auto-Resume button disappears per
-   rule 1; scheduled automation still pending — manual click cancels it; if the
-   user doesn't click, it fires and resumes normally (guards pass).
+5. **Reset arrives early**: Resume enables. ~~Auto-Resume button disappears per
+   rule 1~~ — **superseded by ADR-019**: visibility is boundary-keyed, so the
+   button remains while the claimed boundary is still future even when the
+   snapshot reports availability (the server's enforcement and entitlement
+   planes contradicted each other twice on 2026-10-13); scheduled automation
+   still pending — manual click cancels it; if the user doesn't click, it fires
+   and resumes normally (guards pass).
 6. **Stale at fire**: user typed a new message first → guard rejects → obsolete
    settlement: skipped run, automation deleted, no toast.
 7. **Archive/delete before fire**: automation deleted by the hook; nothing fires.
