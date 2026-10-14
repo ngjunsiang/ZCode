@@ -1,7 +1,8 @@
 # Draft: membership-cache over-invalidation — minimal patch for v3.15.1  {investigated 2026-10-14}
 
-Status: **investigated, not landed**. Targets `upstream/main` (aac47556 = v3.15.1).
-Would become U44 if landed on a `patch/<release>` branch. Upstream has no intake
+Status: **landed 2026-10-14** — U47/U48 + ADR-022 on patch/3.14.3 (d3844d23) and
+ported to patch/3.15.1 (SHA in that branch manifest). Drafted against
+upstream/main (aac47556 = v3.15.1); numbering shifted (U44-U46 = Windows quota series). Upstream has no intake
 channel (issues disabled, zero PRs ever, no CONTRIBUTING) — fork patch is the
 only route unless that changes.
 

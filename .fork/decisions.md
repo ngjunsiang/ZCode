@@ -537,3 +537,23 @@ baseline (none in new code); architecture:check 0 violations; oxfmt clean on
 changed files. No unit-test infra for desktop main/scripts — manual
 verification. User-verified on Windows 2026-10-14. Revisit trigger: if
 supervised respawn misbehaves on Linux (untested there).
+
+
+## ADR-022: membership cache keyed on membershipVersion + TTL (perf)  {2026-10-14}
+
+**Context.** The membership-set cache was built to refetch only on
+membershipVersion changes, but its caller embedded the sessions-index version
+signature in the key, which bumps per bot broadcast without taskMeta (~1Hz
+while streaming): each tick re-keyed the cache and refired 4 RPCs + rebuild +
+re-render (80 RPCs measured in one 15s stream; installed 3.14.5 journal shows
+the same pattern). Investigation + exact diff: `.fork/drafts/membership-cache-3.15.1.md`.
+
+**Decision.** Drop the signature from the key (U47) — tasks-index row changes
+already bump membershipVersion via the workspace-event policy upstream built
+for exactly this — and bound residual staleness with a 30s entry TTL (U48).
+~10 lines, no new data paths. Deliberately NOT the deeper tasks-index-revision
+keying (needs a new renderer data path; see bench README).
+
+**Not contributed upstream.** zai-org/ZCode has no intake channel (issues
+disabled, zero PRs ever, no CONTRIBUTING — verified 2026-10-14); this lives as
+a fork patch on both patch branches.
