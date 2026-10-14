@@ -533,8 +533,14 @@ export function useWorkspaceTaskLists(params: {
               scopes: shardConfigs.map((config) => config.scope),
               sessions: sessionsForRequest,
               sortBy: params.sortBy,
+              // membership 缓存 key 不能携带 taskListVersionSignature：该签名随 bot 广播
+              // （streaming 期间约每秒一次的 task 状态 tick）bump，会把本应只随 membershipVersion
+              // 失效的缓存每 tick 打穿——一次 15s streaming 实测重拉 80 次 4-RPC 归属集合。
+              // tasks-index 行的真实变化（归属/新建/删除/meta）由 workspace 事件 bump
+              // membershipVersion 换 key；残余滞后由 membership 缓存自身 TTL 兜底（见
+              // taskListMembershipSets.ts）。
               membershipCacheKey: `${membershipVersion}::workspace::${shard.shardKey}::${shardConfigs
-                .map((config) => `${config.workspaceKey}@${taskListVersionSignature}`)
+                .map((config) => config.workspaceKey)
                 .join("|")}`,
             });
 
