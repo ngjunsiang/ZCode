@@ -610,13 +610,41 @@ export function useWorkspaceTaskLists(params: {
     sessionsIndexRevision,
     setQueryResults,
   ]);
+  // streaming 期间 version 帧会以高频连续到达；refresh 触发做 leading+trailing
+  // 合并（300ms 窗口）：单次失效仍即时刷新，连续失效只保留一次尾沿补跑，
+  // 不改变最终一致语义（bench 数据见 .fork/bench/2026-10-14-project-switch-perf）。
+  const refreshThrottleRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; lastAt: number }>({
+    timer: null,
+    lastAt: 0,
+  });
   useEffect(() => {
     if (pendingConfigs.length === 0) {
       return;
     }
-
-    void refresh();
+    const REFRESH_COALESCE_MS = 300;
+    const sinceLast = Date.now() - refreshThrottleRef.current.lastAt;
+    if (sinceLast >= REFRESH_COALESCE_MS) {
+      refreshThrottleRef.current.lastAt = Date.now();
+      void refresh();
+      return;
+    }
+    if (refreshThrottleRef.current.timer) {
+      return;
+    }
+    refreshThrottleRef.current.timer = setTimeout(() => {
+      refreshThrottleRef.current.timer = null;
+      refreshThrottleRef.current.lastAt = Date.now();
+      void refresh();
+    }, REFRESH_COALESCE_MS - sinceLast);
   }, [pendingConfigs.length, refresh, refreshTrigger, requestSignature]);
+  useEffect(
+    () => () => {
+      if (refreshThrottleRef.current.timer) {
+        clearTimeout(refreshThrottleRef.current.timer);
+      }
+    },
+    [],
+  );
 
   // sessions-index 列表变化 / pin-archive 归属版本变化 → 标脏本地 scope 缓存，
   // 触发上面的 refresh 用新数据重算。sessions-index 是 conflated 低频列表事件，非高频 snapshot。
