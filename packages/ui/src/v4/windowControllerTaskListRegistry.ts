@@ -35,6 +35,11 @@ export interface WindowControllerTaskListVersion {
 
 const registries = new WeakMap<object, WindowControllerTaskListRegistry>();
 
+// 连续 task frame 的 revision 通知合并窗口：streaming 期间 tasks-index 以帧级频率
+// 产生 task delta，逐帧 bump revision 会让所有列表 hook 立即重读并触发一轮
+// listTaskList RPC + 全量重渲染。250ms 尾沿合并只降低通知频率，不改变最终一致语义。
+const NOTIFY_COALESCE_WINDOW_MS = 250;
+
 function taskAddressKey(address: WindowHostControllerTaskRow["address"]): string {
   return JSON.stringify([
     address.remoteSessionId ?? "local",
@@ -88,23 +93,32 @@ export function getWindowControllerTaskListRegistry(
   let started = false;
   let generation = 0;
   let notificationScheduled = false;
+  let notificationTimer: ReturnType<typeof setTimeout> | null = null;
   let frameDisposable: { dispose(): void } | null = null;
 
   const notifyOnce = (): void => {
     if (notificationScheduled) return;
     notificationScheduled = true;
-    queueMicrotask(() => {
+    // 通知本身只做 revision +1 与 listener 回调（hook 侧重读缓存），单帧到达时
+    // 依旧即时触发；连续帧风暴只在窗口尾沿触发一次，避免每帧一轮 RPC 与重渲染。
+    notificationTimer = setTimeout(() => {
       notificationScheduled = false;
+      notificationTimer = null;
       if (!started) return;
       revision += 1;
       for (const listener of listeners) listener();
-    });
+    }, NOTIFY_COALESCE_WINDOW_MS);
   };
 
   const stop = (): void => {
     if (!started) return;
     started = false;
     generation += 1;
+    if (notificationTimer) {
+      clearTimeout(notificationTimer);
+      notificationTimer = null;
+      notificationScheduled = false;
+    }
     frameDisposable?.dispose();
     frameDisposable = null;
     cursors.clear();
