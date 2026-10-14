@@ -9,7 +9,7 @@ import {
   CONTROLLER_WORKSPACES_TOPIC,
   type WindowHostControllerTaskRow,
 } from "@zcode/shared/zcode-protocol-v4";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getWindowControllerTaskListRegistry } from "@/v4/windowControllerTaskListRegistry.js";
 
 function taskRow(
@@ -41,6 +41,16 @@ function taskRow(
 }
 
 describe("windowControllerTaskListRegistry", () => {
+  // U42/U43（fork 11e0db52）：notifyOnce 从 queueMicrotask 改为 250ms 尾沿合并，
+  // 订阅者通知断言必须推进假时钟越过合并窗口；只 fake setTimeout/clearTimeout/Date，
+  // 其余计时面保持真实，不影响订阅/退订的 Promise 链。
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("所有列表消费者共享两条 Controller 订阅，并按 revision/query single-flight", async () => {
     const frames = new Emitter<WindowHostControllerFrame>();
     const unsubscribeControllerV4 = vi.fn(async () => undefined);
@@ -97,7 +107,8 @@ describe("windowControllerTaskListRegistry", () => {
       sentAt: 2,
       payload: { kind: "deltas", deltas: [] },
     });
-    await Promise.resolve();
+    // 两帧落在同一 250ms 合并窗口内 → 恰一次通知（本补丁的核心语义，原为微任务合并）。
+    await vi.advanceTimersByTimeAsync(250);
     expect(listenerA).toHaveBeenCalledTimes(1);
     expect(listenerB).toHaveBeenCalledTimes(1);
 

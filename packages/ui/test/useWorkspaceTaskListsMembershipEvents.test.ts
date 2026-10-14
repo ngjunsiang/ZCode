@@ -2,7 +2,7 @@
 // activity/detail，membership 事件驱动 pin/archive 归属 re-filter。
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Emitter } from "@zcode/rpc";
 import type { IServiceAccessor } from "@zcode/services";
 import type { ZCodeTaskMeta, ZCodeWorkspaceEvent } from "@zcode/shared";
@@ -133,6 +133,11 @@ async function flushMicrotasks() {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+  // U42/U43（fork 11e0db52）把 registry 通知改为 250ms 尾沿、refresh 触发改为
+  // 300ms leading+trailing 合并；原三轮微任务只覆盖旧的 queueMicrotask 通知路径，
+  // 事件后立即断言会拿到合并窗口内的旧列表。这里推进假时钟覆盖两个窗口
+  // （250 + 300），advanceTimersByTimeAsync 每步顺带冲刷微任务。
+  await vi.advanceTimersByTimeAsync(600);
 }
 
 function createDeferred<T>() {
@@ -176,6 +181,16 @@ function physicalFrame(
 }
 
 describe("useWorkspaceTaskLists membership events (tasks-index 行 + session detail)", () => {
+  // U42/U43（fork 11e0db52）：registry 通知与 refresh 触发均落在真实 setTimeout 上，
+  // 测试统一用假时钟驱动（只 fake setTimeout/clearTimeout/Date——scheduler 与
+  // queueMicrotask 保持真实，act 环境不变）；恢复真实时钟必须先于 afterEach 里
+  // 删除 window/document mock，避免残留尾沿定时器打穿已拆除的 DOM。
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   afterEach(() => {
     resetTaskStatusUnreadSyncForTest();
     clearTaskListWorkspaceEventCoordinatorForTest();
