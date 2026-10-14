@@ -11,6 +11,7 @@ declare const __ZCODE_PRODUCT_FLAVOR__: string;
 declare const __ZCODE_ARMS_RUM_ENDPOINT__: string;
 declare const __ZCODE_TELEMETRY_REPORT_ENDPOINT__: string;
 declare const __ZCODE_AUTO_UPDATE_ENABLED__: boolean;
+declare const __ZCODE_FORCE_UPDATE_GUARD_ENABLED__: boolean;
 
 export function normalizeZCodeEnv(value: string | undefined): ZCodeEnv {
   return value?.trim().toLowerCase() === "production" ? "production" : "test";
@@ -60,6 +61,15 @@ export const ZCODE_TELEMETRY_REPORT_ENDPOINT: string =
 /** 桌面自动更新是否启用。 */
 export const ZCODE_AUTO_UPDATE_ENABLED: boolean =
   typeof __ZCODE_AUTO_UPDATE_ENABLED__ !== "undefined" ? __ZCODE_AUTO_UPDATE_ENABLED__ : false;
+/**
+ * 桌面启动期远端强更门是否启用；与三项上报能力极性相反，未注入 define 的环境保持开启
+ * （安全默认）。升级所有权不在应用自身的发布线（包管理器分发）在构建期显式传
+ * `ZCODE_FORCE_UPDATE_GUARD=0` 关闭——服务端 minimalVersion 不能硬锁一个没有自更新通道的构建。
+ */
+export const ZCODE_FORCE_UPDATE_GUARD_ENABLED: boolean =
+  typeof __ZCODE_FORCE_UPDATE_GUARD_ENABLED__ !== "undefined"
+    ? __ZCODE_FORCE_UPDATE_GUARD_ENABLED__
+    : true;
 
 /** 将本地运行态与编译期 ZCODE_ENV 映射为 ARMS 控制台识别的上报环境标签 */
 export function mapZCodeEnvToArmsRumEnv(runtimeEnv: ZCodeRuntimeEnv): ArmsRumEnv {

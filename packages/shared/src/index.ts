@@ -76,6 +76,7 @@ export {
   ZCODE_ARMS_RUM_ENDPOINT,
   ZCODE_TELEMETRY_REPORT_ENDPOINT,
   ZCODE_AUTO_UPDATE_ENABLED,
+  ZCODE_FORCE_UPDATE_GUARD_ENABLED,
   mapZCodeEnvToArmsRumEnv,
   normalizeZCodeEnv,
   normalizeZCodeProductFlavor,
