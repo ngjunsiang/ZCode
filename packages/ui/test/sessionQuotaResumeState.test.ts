@@ -1,4 +1,6 @@
 // fork/N5：quotaFailedLastTurn 谓词单元测试（spec 场景 1/2/3/4 + 窗口截断边）。
+// ADR-015（2026-10-13）：新增 quotaFailedLastTurnForAutoResume 弱谓词矩阵 —— 与
+// 完整谓词共享全部守卫，只去掉已提交工作要求（step-1 失败 = Auto-Resume 自动重试）。
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
@@ -6,7 +8,10 @@ import type {
   RowsWindow,
   SessionErrorInfo,
 } from "@zcode/shared/zcode-protocol-v4";
-import { quotaFailedLastTurn } from "../src/v4/sessionQuotaResumeState.js";
+import {
+  quotaFailedLastTurn,
+  quotaFailedLastTurnForAutoResume,
+} from "../src/v4/sessionQuotaResumeState.js";
 
 const FAILED_AT = 1_000;
 const TURN_ID = "turn-1";
@@ -83,6 +88,19 @@ function detect(input: {
 }): boolean {
   return quotaFailedLastTurn({
     phase: (input.phase ?? "error") as Parameters<typeof quotaFailedLastTurn>[0]["phase"],
+    lastError: input.lastError === undefined ? lastError() : input.lastError,
+    rows: input.rows === undefined ? rows() : input.rows,
+  });
+}
+
+function detectAuto(input: {
+  phase?: string | null;
+  lastError?: SessionErrorInfo | null;
+  rows?: RowsWindow | null;
+}): boolean {
+  return quotaFailedLastTurnForAutoResume({
+    phase: (input.phase ??
+      "error") as Parameters<typeof quotaFailedLastTurnForAutoResume>[0]["phase"],
     lastError: input.lastError === undefined ? lastError() : input.lastError,
     rows: input.rows === undefined ? rows() : input.rows,
   });
@@ -176,4 +194,66 @@ test("phase 非 error ⇒ false；quota 码不匹配 ⇒ false；无 rows ⇒ fa
     false,
   );
   assert.equal(detect({ rows: null }), false);
+});
+
+// ── ADR-015（2026-10-13）：Auto-Resume 弱谓词矩阵 ──────────────────
+
+test("ADR-015：step-1 失败（无已提交工作）弱谓词 true，完整谓词 false", () => {
+  const input = {
+    lastError: lastError({ attribution: { providerErrorCode: "1313" } }),
+    rows: rows(
+      turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
+      toolCall({ turnId: TURN_ID, createdAt: 950, status: "running" }),
+    ),
+  };
+  assert.equal(detectAuto(input), true);
+  assert.equal(detect(input), false);
+});
+
+test("ADR-015：空文本 assistant 行对弱谓词也成立（无已提交工作概念）", () => {
+  const input = {
+    lastError: lastError({ attribution: { providerErrorCode: "1313" } }),
+    rows: rows(assistantText({ turnId: TURN_ID, createdAt: 950, text: "  " })),
+  };
+  assert.equal(detectAuto(input), true);
+  assert.equal(detect(input), false);
+});
+
+test("ADR-015：失败之后仍有活跃 turnHeader ⇒ 弱谓词同样 false（共享守卫）", () => {
+  assert.equal(
+    detectAuto({
+      rows: rows(
+        turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
+        turnHeader({ turnId: "turn-2", startedAt: 1_100, state: "completedSuccess" }),
+        toolCall({ turnId: TURN_ID, createdAt: 950, status: "success" }),
+      ),
+    }),
+    false,
+  );
+});
+
+test("ADR-015：弱谓词共享 phase/quota/rows 守卫", () => {
+  assert.equal(detectAuto({ phase: "running" }), false);
+  assert.equal(
+    detectAuto({ lastError: lastError({ attribution: { providerErrorCode: "3008" } }) }),
+    false,
+  );
+  assert.equal(
+    detectAuto({ lastError: lastError({ attribution: { providerErrorCode: "3102" } }) }),
+    false,
+  );
+  assert.equal(detectAuto({ rows: null }), false);
+});
+
+test("ADR-015：有已提交工作时两谓词一致为 true（委托关系）", () => {
+  const input = {
+    lastError: lastError({ attribution: { providerErrorCode: "1313" } }),
+    rows: rows(turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }), toolCall({
+      turnId: TURN_ID,
+      createdAt: 950,
+      status: "success",
+    })),
+  };
+  assert.equal(detectAuto(input), true);
+  assert.equal(detect(input), true);
 });

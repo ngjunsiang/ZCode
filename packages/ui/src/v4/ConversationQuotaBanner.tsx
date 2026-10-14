@@ -61,6 +61,11 @@ export function ConversationQuotaBanner({
   /** fork resumeTurn：在场 ⇒ 横幅不可关闭（scenario 7：关闭不得掩盖 Resume 入口）。 */
   resume?: {
     enabled: boolean;
+    /**
+     * fork ADR-015：Resume 按钮是否适用（检测命中 + 失败轮内有已提交工作）。
+     * false（step-1 失败）⇒ 横幅只提供 Auto-Resume，不渲染 Resume。
+     */
+    resumeApplicable: boolean;
     hint?: string | null;
     pending?: boolean;
     onResume: () => void;
@@ -136,7 +141,7 @@ export function ConversationQuotaBanner({
           <InfoIcon className="size-4 shrink-0" />
           <div className="min-w-0 break-words">{message}</div>
         </div>
-        {resume ? (
+        {resume && resume.resumeApplicable ? (
           <Button
             type="button"
             size="sm"
