@@ -2,7 +2,9 @@
  * fork：Resume 按钮的 renderer 派生状态（.fork/spec-resume-turn.md N3）。
  *
  * 三个事实源各自拥有自己的 owner，这里只做派生与定时器：
- * - 检测 = quotaFailedLastTurn(snapshot)（N2 纯函数）；
+ * - 检测 = quotaFailedLastTurnForAutoResume(snapshot)（N2 弱谓词，ADR-015：不要求
+ *   已提交工作，step-1 失败也进入横幅派生）；Resume 按钮适用性 = 完整谓词
+ *   quotaFailedLastTurn（ADR-009），经 resumeApplicable 交给横幅裁剪；
  * - 额度 = entitlement 服务快照；重置确认只能来自刷新后的服务端快照，
  *   本地时钟只负责在「下一个桶边界」触发一次 forced refresh（F5：
  *   server/client 时钟偏差不能由 renderer 裁决重置已发生）。
@@ -24,7 +26,7 @@ import {
   bucketMatchesModel,
   getActiveModelBuckets,
 } from "@/v4/startPlanQuotaBuckets.js";
-import { quotaFailedLastTurn } from "@/v4/sessionQuotaResumeState.js";
+import { quotaFailedLastTurn, quotaFailedLastTurnForAutoResume } from "@/v4/sessionQuotaResumeState.js";
 
 // setTimeout 32 位上限约 24.8 天；月度桶可能更远。封顶一天：触发时 forced refresh
 // 会换回新快照并重臂本 effect，未到边界的 refresh 只是无害的一次对账。
@@ -33,6 +35,11 @@ const MAX_RESET_TIMER_DELAY_MS = 24 * 60 * 60 * 1000;
 export interface QuotaResumeUiState {
   /** 检测命中：横幅携带 Resume（且不可关闭）。 */
   detected: boolean;
+  /**
+   * fork ADR-015：Resume 按钮是否适用 —— 检测命中（弱谓词）且失败轮内有已提交
+   * 工作（完整谓词，ADR-009）。step-1 失败 ⇒ false：横幅只提供 Auto-Resume。
+   */
+  resumeApplicable: boolean;
   /** 额度快照确认至少一个活动桶有剩余 → 可点击。 */
   enabled: boolean;
   /** 灰置时的重置时刻提示（快照提供不了一个体Provider则可能为空）。 */
@@ -54,14 +61,26 @@ export function useQuotaResume(params: {
   onResumed?: () => void;
 }): QuotaResumeUiState | null {
   const { intl, locale } = useZCodeIntl();
+  // fork ADR-015：检测用弱谓词（不要求已提交工作），step-1 失败也进入横幅派生；
+  // Resume 按钮的适用性（完整谓词）单独派生，交给横幅裁剪按钮。
   const detected = useMemo(
     () =>
-      quotaFailedLastTurn({
+      quotaFailedLastTurnForAutoResume({
         phase: params.snapshot?.control.phase ?? null,
         lastError: params.snapshot?.control.lastError ?? null,
         rows: params.snapshot?.rows ?? null,
       }),
     [params.snapshot],
+  );
+  const resumeApplicable = useMemo(
+    () =>
+      detected &&
+      quotaFailedLastTurn({
+        phase: params.snapshot?.control.phase ?? null,
+        lastError: params.snapshot?.control.lastError ?? null,
+        rows: params.snapshot?.rows ?? null,
+      }),
+    [detected, params.snapshot],
   );
 
   const settings = useProviderSettingsView();
@@ -172,6 +191,7 @@ export function useQuotaResume(params: {
   if (!detected) return null;
   return {
     detected,
+    resumeApplicable,
     enabled,
     hint,
     nextResetAt,
