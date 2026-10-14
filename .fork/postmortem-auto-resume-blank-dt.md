@@ -1,5 +1,13 @@
 # Postmortem — Auto-Resume button disabled with blank reset time (2026-10-12)
 
+> **Numbering note (2026-10-14):** this document was written on the Windows checkout
+> before the tracked cross-machine `.fork/` landed, so its ADR numbers are
+> Windows-local. Aliases: Windows ADR-012 (entitlement identity) → documented via
+> PATCHES U40; Windows ADR-013 (retroactive banner on relaunch) → tracked ADR-014;
+> Windows ADR-014 (resumeTurn cold-restore guard fallback) → tracked ADR-015.
+> Later related decisions: tracked ADR-018/019/020 (step-1 Auto-Resume,
+> boundary-keyed visibility, misfire exemption).
+
 **Status:** fixed on `patch/3.14.3` · spec revisit deferred to 3.15.1 (user directive, same day)
 **Symptom filed by user:** "Auto Resume button was not enabled, and no resume timestamp was
 populated." (v3.14.3 dev build, session `sess_5925f089`, GLM-5.3 on
