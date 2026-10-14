@@ -10,13 +10,23 @@ describe("shared runtime env", () => {
     vi.unstubAllGlobals();
   });
 
-  it("构建期可选能力未注入时关闭，事件上报端点取测试注入值", async () => {
+  it("构建期可选能力未注入时关闭（强更门相反，保持开启），事件上报端点取测试注入值", async () => {
     const env = await importFreshEnvModule();
 
     // 单测不注入 ARMS 与自动更新；事件上报端点由 vitest.config.ts 固定注入。
     expect(env.ZCODE_ARMS_RUM_ENDPOINT).toBe("");
     expect(env.ZCODE_AUTO_UPDATE_ENABLED).toBe(false);
     expect(env.ZCODE_TELEMETRY_REPORT_ENDPOINT).toBe("https://zcode.z.ai/api/v1/event/report");
+    // 强更门是安全默认：极性与上报能力相反，未注入 define 的环境保持开启。
+    expect(env.ZCODE_FORCE_UPDATE_GUARD_ENABLED).toBe(true);
+  });
+
+  it("构建期显式注入 ZCODE_FORCE_UPDATE_GUARD_ENABLED=false 时强更门关闭", async () => {
+    vi.stubGlobal("__ZCODE_FORCE_UPDATE_GUARD_ENABLED__", false);
+
+    const env = await importFreshEnvModule();
+
+    expect(env.ZCODE_FORCE_UPDATE_GUARD_ENABLED).toBe(false);
   });
 
   it("未注入 ZCODE_ENV 时默认 test 并映射为 local", async () => {
