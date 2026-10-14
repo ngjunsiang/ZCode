@@ -597,3 +597,59 @@ fork patch on both patch branches.
 warnings on changed files; architecture:check 0 violations. The 5 pre-existing
 "No test suite found" failures under raw `vitest run packages/services/test/`
 reproduce identically without the patch (ADR-011 node:test leftovers).
+
+## ADR-024: fork Linux release line — production identity, force-update gate off at build time, single-target bundles  {2026-10-14}
+
+**Context.** The fork packaged for Arch (PKGBUILD deferred to a later step) is
+an enhancement of the official release, not a separate product: production
+identity, shared `~/.zcode` account data, drop-in replacement (user decision
+2026-10-14, superseding the earlier Preview-flavor packaging sketch). Two
+consequences needed handling. (1) Public-repo builds bake
+`ZCODE_AUTO_UPDATE_ENABLED=false` (no private build-defaults exist in the
+open export), yet the startup force-update gate keys only on
+`ZCODE_PRODUCT_FLAVOR === "production" && app.isPackaged` — a server-side
+minimalVersion bump would hard-block a build that has no self-update channel,
+and the manual-download prompt it offers points at the official installer
+(which would overwrite the fork). (2) `pnpm bundle:desktop -- --os linux`
+always emits all four configured targets; rpm requires rpmbuild, which Arch
+build machines don't carry, and the three unneeded artifacts waste every
+release build.
+
+**Decision.**
+1. Fourth build-time capability `ZCODE_FORCE_UPDATE_GUARD` in the existing
+   resolver (`scripts/build-time-config.mjs`), polarity opposite to the three
+   reporting capabilities: unconfigured = ON (upstream safety default
+   unchanged), only `1`/`0` spellings accepted, anything else fails the build
+   (a silent fallback on the ON side would ship a release build that believed
+   it had closed the door). Desktop main skips the remote gate when the baked
+   constant is false — same exit as the existing Preview/dev skips, one fewer
+   `/client/configs` request, no state difference.
+2. `bundle.mjs --target/-t` (repeatable/comma-separated; `ZCODE_TARGET` env
+   equivalent), validated against the per-os targets configured in
+   electron-builder.config.js; omitted = all targets (upstream default
+   unchanged). Note: electron-builder 26 takes targets as values of the os
+   flag (`--linux pacman --x64`), not positionals.
+3. Fork Linux release command (for the future PKGBUILD `build()`):
+   `ZCODE_ENV=production ZCODE_SKIP_REMOTE_ASSETS=1 ZCODE_FORCE_UPDATE_GUARD=0 pnpm bundle:desktop -- --os linux --arch x64 --target pacman`.
+   Build-machine requirements: `libxcrypt-compat` (fpm's bundled Ruby 3.4.3
+   needs libcrypt.so.1; verified via local extract + LD_LIBRARY_PATH), nodejs
+   >=24 + pnpm 10.33.2; Electron runtime and fpm are auto-downloaded by
+   electron-builder. Install-time deps = the repo's curated
+   PACMAN_RUNTIME_DEPENDENCIES (gtk3 nss libxss libxtst libnotify alsa-lib
+   mesa xdg-utils).
+
+**Verification.** build-time-config node:test 7/7 (default on / explicit off /
+empty string = unset / invalid spellings reject / defines); shared env vitest
+7/7 (uninjected default true, injected false); typecheck 0 errors (after the
+PR-documented e2e-report tsbuildinfo clean rebuild); lint 0 errors / 64
+baseline warnings; architecture:check --changed 0 violations. Production
+build from `1cf343a1`+`e3c575f1`: `ZCode-3.15.1-linux-x64.pkg.tar.zst`
+121.7 MiB, runtime-dependency closure and 500 MiB size audit green; .PKGINFO
+pkgname=zcode with the curated Arch depends; artifact-level check — env chunk
+bakes `ZCODE_FORCE_UPDATE_GUARD_ENABLED` as literal `false` (guard call
+unreachable), flavor production, auto-update and telemetry endpoints off.
+
+**Not contributed upstream.** The consistency argument (a client that cannot
+self-update should not be hard-blocked by the update gate) is
+upstream-relevant, but the intake situation is unchanged (ADR-022 precedent);
+lives as fork patches U50/U51.
