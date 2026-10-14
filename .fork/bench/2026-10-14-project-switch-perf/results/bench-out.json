@@ -1,0 +1,347 @@
+{
+ "phases": {
+  "b1Start": 1791934338510,
+  "b1End": 1791934401996,
+  "b3Start": 1791934401996,
+  "b3End": 1791934436132,
+  "b2Send": 1791934445732,
+  "b2End": 1791934460804,
+  "benchEnd": 1791934468245
+ },
+ "switches": [
+  {
+   "label": "b1#0:ZCode",
+   "target": "ZCode",
+   "wallClick": 1791934338711,
+   "recIdx": 3,
+   "triggerDeltaWall": 781,
+   "timedOut": false
+  },
+  {
+   "label": "b1#1:HC-scans",
+   "target": "HC-scans",
+   "wallClick": 1791934341864,
+   "recIdx": 4,
+   "triggerDeltaWall": null,
+   "timedOut": true
+  },
+  {
+   "label": "b1#2:ontouchlite",
+   "target": "ontouchlite",
+   "wallClick": 1791934352328,
+   "recIdx": 5,
+   "triggerDeltaWall": null,
+   "timedOut": true
+  },
+  {
+   "label": "b1#3:ZCode",
+   "target": "ZCode",
+   "wallClick": 1791934362725,
+   "recIdx": 6,
+   "triggerDeltaWall": 223,
+   "timedOut": false
+  },
+  {
+   "label": "b1#4:HC-scans",
+   "target": "HC-scans",
+   "wallClick": 1791934365169,
+   "recIdx": 7,
+   "triggerDeltaWall": 499,
+   "timedOut": false
+  },
+  {
+   "label": "b1#5:ontouchlite",
+   "target": "ontouchlite",
+   "wallClick": 1791934367859,
+   "recIdx": 8,
+   "triggerDeltaWall": 561,
+   "timedOut": false
+  },
+  {
+   "label": "b1#6:ZCode",
+   "target": "ZCode",
+   "wallClick": 1791934370592,
+   "recIdx": 9,
+   "triggerDeltaWall": 646,
+   "timedOut": false
+  },
+  {
+   "label": "b1#7:HC-scans",
+   "target": "HC-scans",
+   "wallClick": 1791934373415,
+   "recIdx": 10,
+   "triggerDeltaWall": null,
+   "timedOut": true
+  },
+  {
+   "label": "b1#8:ontouchlite",
+   "target": "ontouchlite",
+   "wallClick": 1791934383865,
+   "recIdx": 11,
+   "triggerDeltaWall": null,
+   "timedOut": true
+  },
+  {
+   "label": "b1#9:ZCode",
+   "target": "ZCode",
+   "wallClick": 1791934394250,
+   "recIdx": 12,
+   "triggerDeltaWall": 181,
+   "timedOut": false
+  },
+  {
+   "label": "b1#10:HC-scans",
+   "target": "HC-scans",
+   "wallClick": 1791934396665,
+   "recIdx": 13,
+   "triggerDeltaWall": 552,
+   "timedOut": false
+  },
+  {
+   "label": "b1#11:ontouchlite",
+   "target": "ontouchlite",
+   "wallClick": 1791934399398,
+   "recIdx": 14,
+   "triggerDeltaWall": 597,
+   "timedOut": false
+  },
+  {
+   "label": "b3:cold-first",
+   "target": "parade-state",
+   "wallClick": 1791934402349,
+   "recIdx": 15,
+   "triggerDeltaWall": null,
+   "timedOut": true
+  },
+  {
+   "label": "b3:away",
+   "target": "ontouchlite",
+   "wallClick": 1791934426805,
+   "recIdx": 16,
+   "triggerDeltaWall": 173,
+   "timedOut": false
+  },
+  {
+   "label": "b3:cold-revisit",
+   "target": "parade-state",
+   "wallClick": 1791934432383,
+   "recIdx": 17,
+   "triggerDeltaWall": 748,
+   "timedOut": false
+  }
+ ],
+ "cold": "/home/kureshii/61cssb/parade-state",
+ "pageSwitches": [
+  {
+   "target": "ZCode",
+   "wallClick": 1791934317965,
+   "pageClick": 18028.79999998212,
+   "pageTrigger": 30251.09999999404
+  },
+  {
+   "target": "HC-scans",
+   "wallClick": 1791934329866,
+   "pageClick": 29930,
+   "pageTrigger": 30251.09999999404
+  },
+  {
+   "target": "ontouchlite",
+   "wallClick": 1791934334329,
+   "pageClick": 34393.29999998212,
+   "pageTrigger": 34723.79999998212
+  },
+  {
+   "target": "ZCode",
+   "wallClick": 1791934338801,
+   "pageClick": 38864.89999997616,
+   "pageTrigger": 39213.79999998212
+  },
+  {
+   "target": "HC-scans",
+   "wallClick": 1791934341957,
+   "pageClick": 42020.89999997616,
+   "pageTrigger": 65622.19999998808
+  },
+  {
+   "target": "ontouchlite",
+   "wallClick": 1791934352376,
+   "pageClick": 52440,
+   "pageTrigger": 65622.19999998808
+  },
+  {
+   "target": "ZCode",
+   "wallClick": 1791934362829,
+   "pageClick": 62893.19999998808,
+   "pageTrigger": 65622.19999998808
+  },
+  {
+   "target": "HC-scans",
+   "wallClick": 1791934365227,
+   "pageClick": 65291.39999997616,
+   "pageTrigger": 65622.19999998808
+  },
+  {
+   "target": "ontouchlite",
+   "wallClick": 1791934367963,
+   "pageClick": 68026.69999998808,
+   "pageTrigger": 68378.19999998808
+  },
+  {
+   "target": "ZCode",
+   "wallClick": 1791934370690,
+   "pageClick": 70753.5,
+   "pageTrigger": 71120.29999998212
+  },
+  {
+   "target": "HC-scans",
+   "wallClick": 1791934373488,
+   "pageClick": 73551.59999999404,
+   "pageTrigger": 97133.09999999404
+  },
+  {
+   "target": "ontouchlite",
+   "wallClick": 1791934383921,
+   "pageClick": 83984.59999999404,
+   "pageTrigger": 97133.09999999404
+  },
+  {
+   "target": "ZCode",
+   "wallClick": 1791934394323,
+   "pageClick": 94387.09999999404,
+   "pageTrigger": 97133.09999999404
+  },
+  {
+   "target": "HC-scans",
+   "wallClick": 1791934396742,
+   "pageClick": 96806,
+   "pageTrigger": 97133.09999999404
+  },
+  {
+   "target": "ontouchlite",
+   "wallClick": 1791934399485,
+   "pageClick": 99549.19999998808,
+   "pageTrigger": 99887.89999997616
+  },
+  {
+   "target": "parade-state",
+   "wallClick": 1791934402426,
+   "pageClick": 102489.59999999404,
+   "pageTrigger": 132858.79999998212
+  },
+  {
+   "target": "ontouchlite",
+   "wallClick": 1791934426866,
+   "pageClick": 126929.59999999404,
+   "pageTrigger": 132858.79999998212
+  },
+  {
+   "target": "parade-state",
+   "wallClick": 1791934432478,
+   "pageClick": 132541.89999997616,
+   "pageTrigger": 132858.79999998212
+  },
+  {
+   "target": "zcode-bench-ws",
+   "wallClick": 1791934436750,
+   "pageClick": 136813.69999998808,
+   "pageTrigger": 138179.19999998808
+  }
+ ],
+ "switchWindowLongtasks": [
+  {
+   "label": "b1#0:ZCode",
+   "count": 8,
+   "sum": 977,
+   "max": 240
+  },
+  {
+   "label": "b1#1:HC-scans",
+   "count": 0,
+   "sum": 0,
+   "max": 0
+  },
+  {
+   "label": "b1#2:ontouchlite",
+   "count": 0,
+   "sum": 0,
+   "max": 0
+  },
+  {
+   "label": "b1#3:ZCode",
+   "count": 4,
+   "sum": 584,
+   "max": 336
+  },
+  {
+   "label": "b1#4:HC-scans",
+   "count": 4,
+   "sum": 662,
+   "max": 414
+  },
+  {
+   "label": "b1#5:ontouchlite",
+   "count": 4,
+   "sum": 697,
+   "max": 426
+  },
+  {
+   "label": "b1#6:ZCode",
+   "count": 4,
+   "sum": 498,
+   "max": 175
+  },
+  {
+   "label": "b1#7:HC-scans",
+   "count": 0,
+   "sum": 0,
+   "max": 0
+  },
+  {
+   "label": "b1#8:ontouchlite",
+   "count": 0,
+   "sum": 0,
+   "max": 0
+  },
+  {
+   "label": "b1#9:ZCode",
+   "count": 4,
+   "sum": 619,
+   "max": 366
+  },
+  {
+   "label": "b1#10:HC-scans",
+   "count": 5,
+   "sum": 713,
+   "max": 395
+  },
+  {
+   "label": "b1#11:ontouchlite",
+   "count": 5,
+   "sum": 477,
+   "max": 169
+  },
+  {
+   "label": "b3:cold-first",
+   "count": 0,
+   "sum": 0,
+   "max": 0
+  },
+  {
+   "label": "b3:away",
+   "count": 0,
+   "sum": 0,
+   "max": 0
+  },
+  {
+   "label": "b3:cold-revisit",
+   "count": 8,
+   "sum": 940,
+   "max": 227
+  }
+ ],
+ "b2Longtasks": {
+  "count": 26,
+  "sum": 4505,
+  "max": 437
+ }
+}
