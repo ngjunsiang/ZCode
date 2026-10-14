@@ -1,5 +1,13 @@
 # Research: `resumeTurn` rejected on cold-restored quota-failed sessions (`guard.resumeNoFailedTurn`)
 
+> **Numbering note (2026-10-14):** this document was written on the Windows checkout
+> before the tracked cross-machine `.fork/` landed, so its ADR numbers are
+> Windows-local. Aliases: Windows ADR-012 (entitlement identity) → documented via
+> PATCHES U40; Windows ADR-013 (retroactive banner on relaunch) → tracked ADR-014;
+> Windows ADR-014 (resumeTurn cold-restore guard fallback) → tracked ADR-015.
+> Later related decisions: tracked ADR-018/019/020 (step-1 Auto-Resume,
+> boundary-keyed visibility, misfire exemption).
+
 **Recorded:** 2026-10-13 (Asia/Singapore), incident observed same day ~10:39.
 **Validity anchors:** branch `patch/3.14.3`, HEAD `52d9d8cbd0938b239c33b269fa2df3fc01b54f0a`
 (2026-10-12 17:00 +0800); repo `package.json` version **3.14.3**;

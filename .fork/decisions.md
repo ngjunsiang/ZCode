@@ -447,7 +447,7 @@ committed work. Manual path preserved: after a step-1 failure the prompt is
 still the latest editable user row (`isLatestEditableUserRow`).
 
 Spec: `spec-resume-turn.md` product rule 1 + scenario 3;
-`spec-auto-resume.md` product rule 1. Landed 4afd0df4 (2026-10-14).
+`spec-auto-resume.md` product rule 1. Landed 8202cdaa (2026-10-14).
 
 ## ADR-019: Auto-Resume visibility keyed to the reset boundary, not availability  {ported 2026-10-14; Windows-lineage "ADR-016"}
 
@@ -466,7 +466,7 @@ to entitlement availability (PATCHES U45). `enabled` governs only the Resume
 button's un-grey. The buttons may coexist; manual resume cancels the scheduled
 automation; a stale dispatch is guard-rejected and scheduler-settled.
 **Supersedes the visibility half of `spec-auto-resume.md` acceptance scenario
-5.** Landed 3d31d0f1 (2026-10-14).
+5.** Landed 3bc634c1 (2026-10-14).
 
 ## ADR-020: re-arm retries are exempt from the scheduler misfire guard  {ported 2026-10-14; Windows-lineage "ADR-017"}
 
@@ -494,7 +494,7 @@ be imported by tests). Accepted: a re-armed row claimed very late still
 dispatches — the host precheck re-evaluates quota and the CLI guard
 re-validates the failure state; the horizon bounds repeated unavailability.
 Ledger cosmetics (generic skip reason string overwriting the re-arm record)
-noted, not fixed. Landed 2ecb2c4e (2026-10-14).
+noted, not fixed. Landed 1ab5eaaa (2026-10-14).
 
 ## ADR-021: dev builds don't self-relaunch — dev.mjs supervises restarts via exit code 75  {2026-10-14; Windows-lineage "ADR-017"}
 
@@ -529,7 +529,7 @@ them fatal).
 
 Provenance: first committed in the `Zcode-dev-relaunch` worktree as
 Windows-lineage "ADR-017" (60c6f626) while the branch independently took
-017-020; rebased and renumbered under single-stream numbering. Landed 8f4bc30d,
+017-020; rebased and renumbered under single-stream numbering. Landed 5e88cfe9,
 ff-merged into patch/3.14.3 (2026-10-14).
 
 Verification: pnpm typecheck clean; desktop oxlint 0 errors, warnings match
