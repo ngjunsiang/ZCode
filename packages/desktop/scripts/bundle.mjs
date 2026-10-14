@@ -75,6 +75,14 @@ const archBuilderFlagMap = {
   arm64: "--arm64",
 };
 
+// --target 只允许 electron-builder.config.js 为该 os 配置的 target，防止拼写错误
+// 静默漏建发布产物（bundle 尾部的体积审计只按 os/arch 匹配，无法发现 target 缺失）。
+const allowedTargetAliasByOs = {
+  mac: { dmg: "dmg", zip: "zip" },
+  win: { nsis: "nsis" },
+  linux: { appimage: "AppImage", deb: "deb", rpm: "rpm", pacman: "pacman" },
+};
+
 const artifactExtensionsByOs = {
   mac: [".dmg", ".zip"],
   win: [".exe"],
@@ -259,6 +267,11 @@ function printHelp() {
 参数:
   --os, -o <mac|win|linux>     目标操作系统，默认 mac
   --arch, -a <x64|arm64>       目标 CPU 架构，默认 arm64
+  --target, -t <name>          只构建指定的 electron-builder target（可重复/逗号分隔）。
+                               mac: dmg,zip；win: nsis；linux: AppImage,deb,rpm,pacman。
+                               不传时构建该 os 配置的全部 target（上游默认行为）。
+                               单 target 发布线示例：构建机没有 rpmbuild（rpm target 的
+                               fpm 依赖）时只出 pacman 产物，不必安装无关打包工具链。
   --skip-prepare               跳过 prepare:runtime-assets
   --skip-build                 跳过 pnpm build
   --dry-run                    只打印最终命令，不执行打包
@@ -267,6 +280,7 @@ function printHelp() {
 环境变量:
   ZCODE_TARGET_OS              与 --os 等价
   ZCODE_TARGET_ARCH            与 --arch 等价
+  ZCODE_TARGET                 与 --target 等价（逗号分隔）
 `);
 }
 
@@ -290,6 +304,11 @@ function parseArgs(argv) {
   const options = {
     os: process.env.ZCODE_TARGET_OS ?? null,
     arch: process.env.ZCODE_TARGET_ARCH ?? null,
+    // 逗号分隔的环境变量形态先展开成与 --target 重复传入相同的列表
+    rawTargets: (process.env.ZCODE_TARGET ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
     skipPrepare: process.env.ZCODE_SKIP_PREPARE === "1",
     skipBuild: process.env.ZCODE_SKIP_BUILD === "1",
     dryRun: false,
@@ -345,6 +364,28 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "-t" || arg === "--target") {
+      options.rawTargets.push(
+        ...(argv[index + 1] ?? "")
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean),
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--target=")) {
+      options.rawTargets.push(
+        ...arg
+          .slice("--target=".length)
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean),
+      );
+      continue;
+    }
+
     if (arg.startsWith("-")) {
       throw new Error(`不支持的参数: ${arg}`);
     }
@@ -361,14 +402,40 @@ function parseArgs(argv) {
 
   const resolvedOs = normalizeOs(options.os ?? positionalOs ?? DEFAULT_TARGET_OS);
   const resolvedArch = normalizeArch(options.arch ?? positionalArch ?? DEFAULT_TARGET_ARCH);
+  const resolvedTargets = resolveTargets(resolvedOs, options.rawTargets);
 
   return {
     os: resolvedOs,
     arch: resolvedArch,
+    targets: resolvedTargets,
     skipPrepare: options.skipPrepare,
     skipBuild: options.skipBuild,
     dryRun: options.dryRun,
   };
+}
+
+function resolveTargets(os, rawTargets) {
+  // 不传 --target / ZCODE_TARGET 时返回 null：electron-builder 构建 config 里该 os
+  // 配置的全部 target（上游默认行为不变）。
+  if (rawTargets.length === 0) {
+    return null;
+  }
+
+  const aliasMap = allowedTargetAliasByOs[os];
+  const resolved = [];
+  for (const rawTarget of rawTargets) {
+    const normalized = rawTarget.toLowerCase();
+    const target = aliasMap[normalized];
+    if (!target) {
+      throw new Error(
+        `不支持的目标 target: ${rawTarget}（${os} 可选: ${Object.values(aliasMap).join(",")}）`,
+      );
+    }
+    if (!resolved.includes(target)) {
+      resolved.push(target);
+    }
+  }
+  return resolved;
 }
 
 function run(command, args, envPatch = {}) {
@@ -707,17 +774,21 @@ function verifyPackagedRuntimeDependencies(os, arch) {
 }
 
 async function main() {
-  const { os, arch, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
+  const { os, arch, targets, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
+  // electron-builder 26 的 CLI 不接受位置参数 target（yargs 报 Unknown argument），
+  // target 名必须跟在 os 开关后面作为其数组值：`--linux pacman --x64`。
+  // 不传 --target 时省略，electron-builder 构建 config 的全部 target。
+  const osBuilderFlag = osBuilderFlagMap[os];
   const buildArgs = [
     "exec",
     "electron-builder",
     "--config",
     "electron-builder.config.js",
-    osBuilderFlagMap[os],
+    ...(targets ? [osBuilderFlag, ...targets] : [osBuilderFlag]),
     archBuilderFlagMap[arch],
   ];
 
-  console.log(`[bundle] target=${os}/${arch}`);
+  console.log(`[bundle] target=${os}/${arch}${targets ? ` (${targets.join(",")})` : ""}`);
   console.log(`[bundle] skipPrepare=${skipPrepare} skipBuild=${skipBuild}`);
 
   const buildEnv = {
