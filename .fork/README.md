@@ -19,6 +19,7 @@ with the branch checkout.
 | `README.md` | this protocol |
 | `dev.sh` | **launch entrypoint, Linux/macOS**: `--check` / `--isolated` / `--stack` / `--app` / `--own-deeplink` (session-scoped zcode:// handler so OAuth login completes inside dev; auto-removed on exit; `--deeplink-cleanup` = manual repair) / `--full-setup` / `--no-setup` / `--no-agent-cache` |
 | `dev.ps1` | **launch entrypoint, Windows** (same semantics; `-Stack` / `-App` / `-OwnDeeplink` / `-DeeplinkCleanup` etc.). Deeplink + overall: untested — first Windows run is its smoke test |
+| `drafts/` | investigated-but-unlanded patch write-ups (e.g. `membership-cache-3.15.1.md`) |
 | `PATCHES.md` | **the manifest**: every fork edit to an upstream file, with anchors and re-apply notes |
 | `decisions.md` | decision log (ADR-style); defaults chosen without user input are marked |
 | `spec-resume-turn.md` | product spec (per AGENTS.md spec-first rule) |
@@ -90,3 +91,19 @@ Spec/plan live in `spec-resume-turn.md` / `plan-resume-turn.md`; TDD-1 outcome a
 implementation-scoping notes in `decisions.md` (ADR-007 note + "implementation
 outcomes"). Manual desktop smoke (spec scenarios 1–8) is **not yet executed** —
 see plan Phase 4.
+
+## Branch coverage (checked 2026-10-14)
+
+Both `patch/3.14.3` and `patch/3.15.1` carry the core fork series (resumeTurn,
+auto-resume, quota-banner ports) under per-branch SHAs; `main` stays a pure
+mirror. Asymmetric as of 2026-10-14 (see PATCHES.md `pending port` markers):
+
+| series | on 3.14.3 | on 3.15.1 |
+| --- | --- | --- |
+| U42/U43 streaming coalescing (perf) | landed 61189ba7 | **pending port** |
+| U44-U46 + N14 quota step-1 resume / reset-boundary / misfire (ADR-018..020) | landed 8202cdaa/3bc634c1/1ab5eaaa | **pending port** (ADR entries + specs already shared via .fork) |
+| U47/U48 membership cache key + TTL (ADR-022) | landed d3844d23 | landed 41c2fc30 (patch-id identical) |
+
+Rules going forward: new patches land on the authoring branch and get a
+`pending port` marker until replayed on the other; both branches must carry
+identical `.fork/` trees (doc-only commits get cherry-picked across).
