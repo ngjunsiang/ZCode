@@ -2260,10 +2260,16 @@ describe("autoUpdater ready state sync", () => {
 
     // 修复原因：开发态没有真实发布包安装上下文可接管，不能继续依赖
     // electron-updater.quitAndInstall()；否则按钮会执行退出准备但应用不重启。
+    // ADR-021（fork 4896dd9e）：dev 构建不再 app.relaunch()——它会绕开 concurrently/
+    // vite 工具链拉起孤儿 Electron，renderer 连不上 dev server 呈白窗（2026-10-12/13
+    // 事故）；改为以约定退出码 75 退出，由 scripts/dev.mjs 在工具链内重拉。mock 的
+    // app.exit 不终止进程，退化为可达的 exit(0) 仍会执行，故只断言监督退出码已发出
+    // 且未走 relaunch。
+    const { DEV_SUPERVISED_RELAUNCH_EXIT_CODE } = await import("../src/main/appRelaunch.js");
     expect(onBeforeQuitAndInstall).toHaveBeenCalledTimes(1);
     expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
-    expect(appMock.relaunch).toHaveBeenCalledTimes(1);
-    expect(appMock.exit).toHaveBeenCalledWith(0);
+    expect(appMock.relaunch).not.toHaveBeenCalled();
+    expect(appMock.exit).toHaveBeenCalledWith(DEV_SUPERVISED_RELAUNCH_EXIT_CODE);
     expect(loggerInfoMock).toHaveBeenCalledWith(
       "[auto-update] dev update install fallback: relaunch app",
     );
