@@ -1,0 +1,71 @@
+diff --git a/packages/ui/src/app-shell/useWorkspaceShellLifecycle.ts b/packages/ui/src/app-shell/useWorkspaceShellLifecycle.ts
+index 9cda59e7..93f13a44 100644
+--- a/packages/ui/src/app-shell/useWorkspaceShellLifecycle.ts
++++ b/packages/ui/src/app-shell/useWorkspaceShellLifecycle.ts
+@@ -9,6 +9,18 @@ import {
+   useZCodeSessionStore,
+ } from "@/store/zcodeSessionStore.js";
+ 
++// bench opt3：切走 workspace 时把预热回收延迟一小段时间（并可在切回时取消），
++// 让 A↔B 快速来回切换不必每次重付 read-only agent 的启动成本。
++const WORKSPACE_PREPARATION_RELEASE_DELAY_MS = 90_000;
++const pendingReleaseTimersByWorkspaceKey = new Map<string, ReturnType<typeof setTimeout>>();
++function cancelPendingWorkspacePreparationRelease(workspaceKey: string): void {
++  const pending = pendingReleaseTimersByWorkspaceKey.get(workspaceKey);
++  if (pending) {
++    clearTimeout(pending);
++    pendingReleaseTimersByWorkspaceKey.delete(workspaceKey);
++  }
++}
++
+ export function useWorkspaceShellLifecycle({
+   workspaceAbsPath,
+   workspaceIdentity,
+@@ -42,6 +54,8 @@ export function useWorkspaceShellLifecycle({
+   }, [setBrowserNavigationRequest, setTestMessages, workspaceAbsPath]);
+ 
+   useEffect(() => {
++    // 切回该 workspace 时取消还在等待中的延迟回收，保持预热态。
++    cancelPendingWorkspacePreparationRelease(workspaceIdentity?.trim() || workspaceAbsPath);
+     return () => {
+       const currentWorkspaceState = useZCodeSessionStore
+         .getState()
+@@ -76,18 +90,26 @@ export function useWorkspaceShellLifecycle({
+         .getState()
+         .setWorkspaceInitState(workspaceAbsPath, "idle", null, workspaceIdentity);
+ 
+-      void services.zcodeTaskService
+-        .releaseWorkspacePreparation({
+-          workspacePath: workspaceAbsPath,
+-          ...(workspaceIdentity ? { workspaceIdentity } : {}),
+-          provider,
+-        })
+-        .catch((error: unknown) => {
+-          logger.error(
+-            `[App] 释放 workspace 预热态失败 workspace=${workspaceAbsPath} provider=${provider}:`,
+-            error,
+-          );
+-        });
++      const releaseWorkspaceKey = workspaceIdentity?.trim() || workspaceAbsPath;
++      cancelPendingWorkspacePreparationRelease(releaseWorkspaceKey);
++      pendingReleaseTimersByWorkspaceKey.set(
++        releaseWorkspaceKey,
++        setTimeout(() => {
++          pendingReleaseTimersByWorkspaceKey.delete(releaseWorkspaceKey);
++          void services.zcodeTaskService
++            .releaseWorkspacePreparation({
++              workspacePath: workspaceAbsPath,
++              ...(workspaceIdentity ? { workspaceIdentity } : {}),
++              provider,
++            })
++            .catch((error: unknown) => {
++              logger.error(
++                `[App] 释放 workspace 预热态失败 workspace=${workspaceAbsPath} provider=${provider}:`,
++                error,
++              );
++            });
++        }, WORKSPACE_PREPARATION_RELEASE_DELAY_MS),
++      );
+     };
+   }, [services.zcodeTaskService, workspaceIdentity, workspaceAbsPath]);
+ }
