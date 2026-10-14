@@ -96,13 +96,15 @@ see plan Phase 4.
 
 Both `patch/3.14.3` and `patch/3.15.1` carry the core fork series (resumeTurn,
 auto-resume, quota-banner ports) under per-branch SHAs; `main` stays a pure
-mirror. Asymmetric as of 2026-10-14 (see PATCHES.md `pending port` markers):
+mirror. Parity restored 2026-10-14 (evening): every fork patch now lives on both
+branches; per-branch SHAs in PATCHES.md rows.
 
-| series | on 3.14.3 | on 3.15.1 |
+| series | 3.14.3 | 3.15.1 |
 | --- | --- | --- |
-| U42/U43 streaming coalescing (perf) | landed 61189ba7 | **pending port** |
-| U44-U46 + N14 quota step-1 resume / reset-boundary / misfire (ADR-018..020) | landed 8202cdaa/3bc634c1/1ab5eaaa | **pending port** (ADR entries + specs already shared via .fork) |
-| U47/U48 membership cache key + TTL (ADR-022) | landed d3844d23 | landed 41c2fc30 (patch-id identical) |
+| U42/U43 streaming coalescing (perf) | 61189ba7 | 11e0db52 (cherry-pick) |
+| U44-U46 + N14 quota step-1 / reset-boundary / misfire (ADR-018..020) | 8202cdaa / 3bc634c1 / 1ab5eaaa | 8b8785f0 / 8c713bbf / 11593a65 — test files adapted to vitest (8b8785f0 内, 1af7babb), per the root-gate rule |
+| ADR-021 dev supervised relaunch (+ lint cleanup) | 5e88cfe9 / 17360349 | 4896dd9e (manual resolve: autoUpdater/desktopCommandHandlers refactored upstream) / 51effe6d |
+| U47/U48 membership cache key + TTL (ADR-022) | d3844d23 | 41c2fc30 (patch-id identical) |
 
 Rules going forward: new patches land on the authoring branch and get a
 `pending port` marker until replayed on the other; both branches must carry
