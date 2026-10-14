@@ -373,7 +373,27 @@ export function createTerminalService(dependencies: {
       });
       const nodePty = await loadNodePtyModule();
       ensureNodePtySpawnHelperExecutable();
-      const dataEmitter = new Emitter<string>();
+      // 远程链路(SSH workspace / 手机远控 relay)上,create 的 RPC 往返加客户端
+      // EventListen 的第二个往返期间,shell 早已把提示符写进 PTY;而动态事件被
+      // ProxyChannel 明确排除在 bufferEvent 之外,无监听者的 Emitter.fire 会直接
+      // 丢弃这些字节,远程终端因此整屏空白(只剩 xterm 自己的光标,按回车才出
+      // 提示符)。服务端补一层缓冲:无订阅者时先积累,首个订阅者挂上时一次性
+      // 回放;最后一个订阅者移除(如重连)后重新积累,顺带修复重连间隙丢输出。
+      // 协议与客户端零改动,本地 MessagePort / 远程 workspace / web relay 共用。
+      let pendingData: string[] | null = [];
+      const dataEmitter = new Emitter<string>({
+        onWillAddFirstListener: () => {
+          // foundation.ts 先注册 listener 再触发本钩子,此时 fire 必达该订阅者
+          const buffered = pendingData ?? [];
+          pendingData = null;
+          if (buffered.length > 0) {
+            dataEmitter.fire(buffered.join(""));
+          }
+        },
+        onDidRemoveLastListener: () => {
+          pendingData = [];
+        },
+      });
       const exitEmitter = new Emitter<number>();
 
       let p: IPty;
@@ -392,7 +412,14 @@ export function createTerminalService(dependencies: {
         );
       }
 
-      p.onData((data) => dataEmitter.fire(data));
+      p.onData((data) => {
+        // 订阅未建立(或已全部移除)时进入缓冲模式,字节留给首个/下一个订阅者
+        if (pendingData !== null) {
+          pendingData.push(data);
+          return;
+        }
+        dataEmitter.fire(data);
+      });
       p.onExit(({ exitCode }) => {
         exitEmitter.fire(exitCode);
         dataEmitter.dispose();
