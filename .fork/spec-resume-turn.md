@@ -83,7 +83,17 @@ Follows AGENTS.md spec-first rule. Terminology follows the v4 conversation proto
    (classification falls back to the attribution code, local ADR-014) and the CLI
    guard accepts via the same fact from the v4 projection control (local
    ADR-015) — banner and guard never disagree after a restart.
-3. **Step-1 failure (no committed work)**: no Resume button (ADR-009).
+3. **Step-1 failure (no committed work)**: no Resume button (ADR-009). The
+   Auto-Resume button **is** offered while the failure's reset boundary is in
+   the future (ADR-018 + ADR-019): scheduling it fires the ordinary
+   `resumeTurn` continuation, which for an unstarted turn degenerates to a
+   deliberate auto-retry of the prompt (the CLI guard never required committed
+   work — zero CLI change). A quota re-arm (host precheck finds no recoverable
+   quota ⇒ retry at the policy's target time) is a retry claim, not a missed
+   window: it survives the scheduler's misfire guard (ADR-020). Once the
+   boundary passes (or the snapshot provides none), no buttons remain for a
+   step-1 failure — manual re-send is the path (the prompt is still the latest
+   editable user row).
 4. **Concurrent-limit failure (3008)**: no Resume button.
 5. **Old CLI**: renderer sends `resumeTurn`, gets `proto.invalidPayload` rejection →
    error toast, no crash, session usable.
