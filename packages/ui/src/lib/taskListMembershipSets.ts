@@ -286,8 +286,14 @@ export async function fetchTaskListMembershipSets(params: {
 // 会让所有列表实例各发一轮 1+3×scopes 的 RPC（多 workspace 多实例下每帧上百次调用）。
 // 这里按「membershipVersion + endpoints 签名」缓存 in-flight promise，跨 hook 实例共享；
 // 版本 bump 或 endpoint 拓扑变化时自然换 key 重拉。缓存有界，避免历史版本堆积。
-const membershipPromiseByCacheKey = new Map<string, Promise<TaskListMembershipSets>>();
+const membershipPromiseByCacheKey = new Map<
+  string,
+  { promise: Promise<TaskListMembershipSets>; at: number }
+>();
 const MEMBERSHIP_CACHE_MAX_KEYS = 8;
+// key 不再携带 sessions-index 版本后，未覆盖的失效路径（无 taskMeta 的低频广播等）
+// 最多滞后一个 TTL 窗口；streaming 期间的重拉频率也从每 tick 降到 ≤1/TTL。
+const MEMBERSHIP_CACHE_TTL_MS = 30_000;
 // service 实例身份进 key：不同 endpoint service（含测试 mock、重连后的新 proxy）不得共享缓存。
 const membershipServiceIds = new WeakMap<TaskListMembershipService, number>();
 let nextMembershipServiceId = 1;
@@ -310,11 +316,11 @@ export function fetchTaskListMembershipSetsForEndpointsCached(params: {
     .map((endpoint) => membershipServiceIdOf(endpoint.service))
     .join(",")}`;
   const cached = membershipPromiseByCacheKey.get(fullCacheKey);
-  if (cached) {
-    return cached;
+  if (cached && Date.now() - cached.at < MEMBERSHIP_CACHE_TTL_MS) {
+    return cached.promise;
   }
   const promise = fetchTaskListMembershipSetsForEndpoints(params.endpoints);
-  membershipPromiseByCacheKey.set(fullCacheKey, promise);
+  membershipPromiseByCacheKey.set(fullCacheKey, { promise, at: Date.now() });
   // 辅助集合可按空集降级，但 task 行分区读取不完整会 reject；不缓存失败，
   // 避免一次短暂 RPC 异常被当前 version 粘住。
   promise.catch(() => membershipPromiseByCacheKey.delete(fullCacheKey));
