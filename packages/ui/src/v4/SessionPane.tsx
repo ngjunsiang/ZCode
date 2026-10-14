@@ -4549,9 +4549,16 @@ export function SessionPane({
           onDismiss={quotaBanner.dismiss}
           resume={quotaResume ?? undefined}
           autoResume={
-            // fork Auto-Resume 产品规则 1：仅在重置未确认（Resume 灰置）时在场；
-            // 重置确认后按钮消失、Resume 启用。检测未命中（quotaResume null）不渲染。
-            quotaResume !== null && !quotaResume.enabled && autoResume !== null
+            // fork Auto-Resume（ADR-016）：可见性跟随失败的服务端重置边界
+            // （nextResetAt 仍在未来）或已调度的 automation，而不是 entitlement
+            // 可用性——2026-10-13 两次实测 enforcement（1308 声称的 reset 时刻）
+            // 与 entitlement 快照互相矛盾，「快照说有量」不能推翻用户刚看到的
+            // 失败。enabled 只管 Resume 的 un-grey；两按钮可并存，手动 Resume
+            // 成功仍会经 onResumed 取消已调度 automation。检测未命中
+            // （quotaResume null）不渲染。
+            quotaResume !== null &&
+            autoResume !== null &&
+            (quotaResume.nextResetAt !== null || autoResume.scheduled !== null)
               ? {
                   scheduled: autoResume.scheduled !== null,
                   canSchedule: autoResume.canSchedule,
