@@ -254,3 +254,18 @@ mirrors the `patch/*` line naming). Local-only rename, worktree HEAD moved
 in place. Constraint reminder: no bare `hydra` branch can coexist with the
 `hydra/*` namespace — use `hydra/main` if an integration branch is ever
 needed.
+
+### 2026-10-15 — exp-04: Add account flash-close fixed
+
+Root cause: the WelcomeScreen auto-complete effect ran on
+`active && hasUser && !attempt` — correct as a close-on-success signal in
+the logged-out world, but it fired at *entry open* once Add account
+could open the entry while signed in (exp-03 made onLogin always
+available). Fix: edge-trigger — `shouldCompleteLoginEntryOnUserAppeared`
+fires only when user goes absent→present *while the entry is open*;
+activation frame records presence and does not close. Add-account login
+completion still closes via the oauthSuccessSeq effect (status must be
+"waiting", so purchase flows keep their attempt-scoped protection).
+
+Verified: loginPage/loginDialogProviders/loginFailureCancel 13/13,
+typecheck (pipefail), oxlint clean on changed files.
