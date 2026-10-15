@@ -10,6 +10,7 @@ import type { ICredentialService } from "../../credential/credential.js";
 import { createServiceLogger } from "../../logger/serviceLogger.js";
 import {
   OAuthAccountStore,
+  deriveAccountId,
   legacyUserInfoKey,
   type OAuthAccountRef,
 } from "./oauthAccountStore.js";
@@ -272,8 +273,11 @@ export class OAuthCredentialRepo {
   }
 
   async saveUserProfile(provider: OAuthProviderId, profile: OAuthUserProfile): Promise<void> {
+    // 按 profile 身份路由，而非"该 provider 的主账号"：同 provider 的第二个账号
+    // 登录时不得覆盖已有条目的 profile（registry 依 accountId 区分登录实例）。
+    const accountId = deriveAccountId(profile);
     const ref = await this.store.resolvePrimaryRefFor(provider);
-    if (ref) {
+    if (ref && ref.accountId === accountId) {
       // ZAI 后端返回的 data.user 是后续账号态排查与恢复的源数据，
       // 之前只保存归一化展示字段会丢失 email/name/avatar 原始结构。
       await this.store.putAccountProfile(ref, profile);
@@ -287,7 +291,7 @@ export class OAuthCredentialRepo {
       return;
     }
 
-    // 首登：token 已在镜像，此刻以 profile 收编为注册账号。
+    // 新账号（或重登非主账号）：token 已在镜像，以 profile 收编/更新对应条目。
     await this.store.adoptMirrorTokensAsAccount(provider, profile);
   }
 
@@ -327,6 +331,31 @@ export class OAuthCredentialRepo {
     }
 
     await this.store.ensureNoActivePointer();
+  }
+
+  /** 已知登录账号列表（活跃账号排首位）；账号切换器的数据源。 */
+  async listAccounts() {
+    return this.store.listAccounts();
+  }
+
+  /** 账号切换事务核心：冻结 outgoing → 激活 → 解冻 incoming（见 OAuthAccountStore）。 */
+  async switchToAccount(ref: OAuthAccountRef) {
+    await this.store.switchToAccount(ref);
+  }
+
+  /** 登录写入共享 zcodejwttoken 槽位前冻结当前活跃账号 token。 */
+  async freezeCurrentActiveTokens() {
+    await this.store.freezeCurrentActiveTokens();
+  }
+
+  /** 当前活跃指针（含 pending；账号切换回滚需要恢复到 ref 粒度）。 */
+  async getActiveAccountRef(): Promise<OAuthAccountRef | null> {
+    return this.store.resolveActiveRef();
+  }
+
+  /** 按登录实例激活（persistOAuthSession 落账 / 切换回滚共用）。 */
+  async activateAccount(ref: OAuthAccountRef) {
+    await this.store.activateRef(ref);
   }
 
   private async clearCorruptOAuthSession(): Promise<void> {
