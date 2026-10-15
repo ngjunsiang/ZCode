@@ -787,6 +787,8 @@ export function SettingsPage({
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
     sharedSettings?.askUserQuestionAutoResolutionEnabled !== false;
+  // fork ADR-026 规则 11：缺省视为开（Zod default(true) 同语义）。
+  const autoResumeEnabled = sharedSettings?.autoResumeEnabled !== false;
   const modelIoFullRetentionEnabled = sharedSettings?.modelIoFullRetentionEnabled === true;
   const [dataBaseDir, setDataBaseDir] = useState("");
   const [terminalInheritSystemProfile, setTerminalInheritSystemProfile] = useState(true);
@@ -1036,6 +1038,21 @@ export function SettingsPage({
         action: "toggle_ask_user_auto_resolution",
         trigger: "switch",
         operation: () => updateSharedSettings({ askUserQuestionAutoResolutionEnabled: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleAutoResumeEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.conversation",
+        action: "toggle_auto_resume",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ autoResumeEnabled: enabled }),
         completed: {
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
@@ -1883,6 +1900,7 @@ export function SettingsPage({
                               askUserQuestionAutoResolutionEnabled={
                                 askUserQuestionAutoResolutionEnabled
                               }
+                              autoResumeEnabled={autoResumeEnabled}
                               modelIoFullRetentionEnabled={modelIoFullRetentionEnabled}
                               onDataBaseDirChange={handleDataBaseDirChange}
                               onSelectDataBaseDir={selectDirectory}
@@ -1928,6 +1946,7 @@ export function SettingsPage({
                               onAskUserQuestionAutoResolutionEnabledChange={
                                 handleAskUserQuestionAutoResolutionEnabledChange
                               }
+                              onAutoResumeEnabledChange={handleAutoResumeEnabledChange}
                               onOpenOnboardingDialog={() =>
                                 runUserAction({
                                   input: {
