@@ -4952,6 +4952,7 @@ export function SessionPane({
     },
   });
   // fork Auto-Resume：调度/取消/已调度派生；automation RPC 不可用（web-remote）时整体为 null。
+  // ADR-026 规则 8：设置开（缺省 true）⇒ 满足条件时自动调度，无需点击。
   const autoResume = useAutoResume({
     sessionId: snapshot?.sessionId ?? sessionId,
     sessionTitle: snapshot?.meta.title?.trim() ?? null,
@@ -4960,6 +4961,7 @@ export function SessionPane({
     agentService: baseWorkspaceServices.zcodeAgentService,
     resetAt: quotaResume?.nextResetAt ?? null,
     enabled: quotaResume !== null,
+    autoEnabled: sharedSettings?.autoResumeEnabled !== false,
   });
   useEffect(() => {
     autoResumeRef.current = autoResume;
