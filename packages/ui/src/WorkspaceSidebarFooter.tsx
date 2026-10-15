@@ -1,6 +1,6 @@
 import { SidebarNativeTooltip, ControlHintTooltip } from "@/ControlHintTooltip.js";
 /* oxlint-disable eslint(max-lines) -- footer 聚合账户、主题、模式和快捷键菜单。 */
-import type { Locale, UserInfo } from "@zcode/shared";
+import type { Locale, OAuthAccountSummary, UserInfo } from "@zcode/shared";
 import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import { DesktopCommandIds } from "@zcode/shared";
 import {
@@ -28,8 +28,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.js";
 import {
+  ArrowLeftRight,
+  Check,
   Copy,
-  PencilRuler,
   Globe,
   Gift,
   Loader2,
@@ -37,12 +38,15 @@ import {
   LogOut,
   Maximize,
   Palette,
+  PencilRuler,
   Settings,
   User,
+  UserPlus,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import { usePlatform } from "@/hooks/usePlatform.js";
+import { useAccountSwitcher } from "@/hooks/useAccountSwitcher.js";
 import { useOpenRewards } from "@/rewards/RewardsProvider.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useShortcutCommandLabel } from "@/shortcuts/useShortcutBindings.js";
@@ -228,6 +232,21 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   const canResetDesktopZoom = desktopZoomLevel !== 0;
   const canZoomIn = desktopZoomLevel < DESKTOP_ZOOM_MAX_LEVEL;
   const canZoomOut = desktopZoomLevel > DESKTOP_ZOOM_MIN_LEVEL;
+  // hydra 账号切换器：按钮位于账户胶囊与设置按钮之间（GitHub 式交互）。
+  const accountSwitcher = useAccountSwitcher();
+  const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
+  const handleSwitchAccount = useCallback(
+    (account: OAuthAccountSummary) => {
+      void accountSwitcher.switchTo(account).then((switched) => {
+        if (switched) {
+          setAccountSwitcherOpen(false);
+        } else {
+          toast(intl.formatMessage({ id: "sidebar.accountSwitcher.switchFailed" }));
+        }
+      });
+    },
+    [accountSwitcher, intl],
+  );
 
   return (
     // footer 被 Settings 复用，页面专属边距由调用方传入，避免修改共享默认样式。
@@ -466,6 +485,101 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex shrink-0 items-center gap-1.5">
+          {user ? (
+            <DropdownMenu
+              open={accountSwitcherOpen}
+              onOpenChange={(open) => {
+                setAccountSwitcherOpen(open);
+                // 每次打开都重读注册表：CLI/官方端登录的新账号即时可见
+                if (open) {
+                  void accountSwitcher.refresh();
+                }
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  data-testid="account-switcher-trigger"
+                  aria-label={intl.formatMessage({ id: "sidebar.accountSwitcher.title" })}
+                  title={intl.formatMessage({ id: "sidebar.accountSwitcher.title" })}
+                  disabled={accountSwitcher.isSwitching}
+                >
+                  {accountSwitcher.isSwitching ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ArrowLeftRight className="size-4" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <div
+                  data-testid="account-switcher-title"
+                  className="px-2 py-1.5 text-ui-sm font-medium text-foreground-subtle"
+                >
+                  {intl.formatMessage({ id: "sidebar.accountSwitcher.title" })}
+                </div>
+                <DropdownMenuSeparator />
+                {accountSwitcher.accounts.map((account) => {
+                  const isActive = account.accountId === user.id;
+                  return (
+                    <DropdownMenuItem
+                      key={`${account.provider}:${account.accountId}`}
+                      disabled={accountSwitcher.isSwitching || isActive}
+                      onSelect={() => handleSwitchAccount(account)}
+                      data-testid="account-switcher-item"
+                    >
+                      <Avatar size="sm" className="shrink-0">
+                        {account.avatarUrl ? (
+                          <AvatarImage src={account.avatarUrl} alt={account.displayName} />
+                        ) : null}
+                        <AvatarFallback className="bg-background text-foreground">
+                          {(account.displayName || account.username || "?")[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="truncate text-ui-base text-foreground">
+                          {account.displayName}
+                        </div>
+                        <div className="truncate text-ui-sm text-foreground-subtle">
+                          {account.username}
+                        </div>
+                      </div>
+                      {/* 选中态按规范用对勾标记，不做整行强填充 */}
+                      {isActive ? <Check className="size-4 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  );
+                })}
+                {accountSwitcher.accounts.length === 0 ? (
+                  <DropdownMenuItem disabled data-testid="account-switcher-empty">
+                    {intl.formatMessage({ id: "sidebar.accountSwitcher.empty" })}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                {onLogin ? (
+                  <DropdownMenuItem
+                    onSelect={onLogin}
+                    data-testid="account-switcher-add-account"
+                    disabled={accountSwitcher.isSwitching}
+                  >
+                    <UserPlus className="size-4" />
+                    {intl.formatMessage({ id: "sidebar.accountSwitcher.addAccount" })}
+                  </DropdownMenuItem>
+                ) : null}
+                {onLogout ? (
+                  <DropdownMenuItem
+                    onSelect={onLogout}
+                    data-testid="account-switcher-sign-out"
+                    disabled={accountSwitcher.isSwitching}
+                  >
+                    <LogOut className="size-4" />
+                    {intl.formatMessage({ id: "app.logout" })}
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
           {isDesktop && workspacePath ? (
             <WorkspaceWebRemoteControlTrigger
               workspacePath={workspacePath}
