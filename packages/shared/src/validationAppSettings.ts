@@ -572,6 +572,8 @@ const appSettingsObjectSchema = z.object({
   zcodeInteractionBehavior: zcodeInteractionBehaviorSchema.default("queue"),
   askUserQuestionAutoResolutionEnabled: z.boolean().default(true),
   pluginAutoRecommendationEnabled: z.boolean().default(false),
+  autoResumeEnabled: z.boolean().default(true),
+
   modelIoFullRetentionEnabled: z.boolean().default(false),
   dynamicWorkflowMode: dynamicWorkflowModeSettingSchema,
   enabledBuiltinAgentCliProviders: enabledBuiltinAgentCliProvidersSchema.default([
@@ -676,6 +678,8 @@ export const appSettingsPatchSchema = z.object({
   zcodeInteractionBehavior: zcodeInteractionBehaviorSchema.optional(),
   askUserQuestionAutoResolutionEnabled: z.boolean().optional(),
   pluginAutoRecommendationEnabled: z.boolean().optional(),
+  autoResumeEnabled: z.boolean().optional(),
+
   modelIoFullRetentionEnabled: z.boolean().optional(),
   // 空串是「删除选择、回到跟随」的哨兵：RPC 会吞掉 undefined，normalizeSettingsPatch 把它归一成删除。
   dynamicWorkflowMode: z.union([z.enum(DYNAMIC_WORKFLOW_MODES), z.literal("")]).optional(),

@@ -347,6 +347,9 @@ export interface AppSettings {
   askUserQuestionAutoResolutionEnabled?: boolean;
   /** 默认关闭，控制对话中的插件发现和推荐；设置页手动安装保持可用。 */
   pluginAutoRecommendationEnabled?: boolean;
+  /** 配额中断时自动调度 Auto-Resume（fork ADR-026）；缺失按开启兼容旧配置。 */
+  autoResumeEnabled?: boolean;
+
   /** 是否完整保留 Model I/O；开启后不轮转、不限额重置、不压缩或裁剪，鉴权信息仍会脱敏。 */
   modelIoFullRetentionEnabled?: boolean;
   /**
