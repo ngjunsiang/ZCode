@@ -770,14 +770,17 @@ export class OAuthCredentialRepo {
     profile: OAuthUserProfile,
     _expected?: Readonly<Record<string, string | null>>,
   ): Promise<boolean> {
-    // Fork (I-11): route by registry state instead of a raw slot write.
+    // Fork (I-11): route by registry state AND profile identity — a second
+    // login of the same provider must not overwrite the first account's
+    // profile entry (the registry distinguishes login instances by accountId).
     // The CAS expected guard is intentionally not applied to registry writes:
     // the registry is single-writer by construction (switch flows serialize).
     // Returns false only on registry failure so callers keep their retry
     // semantics (e.g. the BigModel cached-profile migration).
     try {
+      const accountId = deriveAccountId(profile);
       const ref = await this.store.resolvePrimaryRefFor(provider);
-      if (ref) {
+      if (ref && ref.accountId === accountId) {
         await this.store.putAccountProfile(ref, profile);
         return true;
       }
@@ -790,8 +793,8 @@ export class OAuthCredentialRepo {
         return true;
       }
 
-      // First login: tokens are already in the mirror; adopt them into the
-      // registry under this profile's identity.
+      // New account (or re-login of a non-primary account): tokens are in the
+      // mirror; adopt/update the matching registry entry under this identity.
       await this.store.adoptMirrorTokensAsAccount(provider, profile);
       return true;
     } catch (error) {
@@ -840,6 +843,31 @@ export class OAuthCredentialRepo {
     }
 
     await this.store.ensureNoActivePointer();
+  }
+
+  /** 已知登录账号列表（活跃账号排首位）；账号切换器的数据源。 */
+  async listAccounts() {
+    return this.store.listAccounts();
+  }
+
+  /** 账号切换事务核心：冻结 outgoing → 激活 → 解冻 incoming（见 OAuthAccountStore）。 */
+  async switchToAccount(ref: OAuthAccountRef) {
+    await this.store.switchToAccount(ref);
+  }
+
+  /** 登录写入共享 zcodejwttoken 槽位前冻结当前活跃账号 token。 */
+  async freezeCurrentActiveTokens() {
+    await this.store.freezeCurrentActiveTokens();
+  }
+
+  /** 当前活跃指针（含 pending；账号切换回滚需要恢复到 ref 粒度）。 */
+  async getActiveAccountRef(): Promise<OAuthAccountRef | null> {
+    return this.store.resolveActiveRef();
+  }
+
+  /** 按登录实例激活（persistOAuthSession 落账 / 切换回滚共用）。 */
+  async activateAccount(ref: OAuthAccountRef) {
+    await this.store.activateRef(ref);
   }
 
   private async clearCorruptOAuthSession(

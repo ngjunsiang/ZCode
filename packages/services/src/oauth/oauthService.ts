@@ -10,6 +10,8 @@ import {
   ZAI_CN_PROVIDER_ID,
   isBuiltinOAuthProvider,
   isZaiOAuthProvider,
+  type OAuthAccountSummary,
+
   type OAuthCallbackResult,
   type OAuthAccountAvailability,
   type OAuthCachedSessionRestoreResult,
@@ -40,6 +42,7 @@ import {
   type OAuthProviderAdapter,
 } from "./providers/index.js";
 import { OAuthCredentialRepo } from "./repo/oauthCredentialRepo.js";
+import { deriveAccountId } from "./repo/oauthAccountStore.js";
 import { createOAuthRuntimeConfig } from "./runtimeConfig.js";
 import {
   buildDesktopOAuthRedirectUriFromEnv,
@@ -120,6 +123,8 @@ function isSameOAuthProfile(left: OAuthUserProfile, right: OAuthUserProfile): bo
  * OAuth 认证服务实现
  *
  * 在 host process 中运行，管理 OAuth 流程的完整生命周期。
+ * hydra：provider 身份域不再互斥（见 persistOAuthSession），
+ * 多账号并存由 OAuthCredentialRepo 的注册表承载。
  */
 export class OAuthService implements IOAuthService {
   private readonly sessionChanges = new Emitter<OAuthSessionState>();
@@ -462,7 +467,18 @@ export class OAuthService implements IOAuthService {
         return null;
       }
 
-      return this.repo.loadTokenSet(BIGMODEL_PROVIDER_ID);
+      const tokenSet = await this.repo.loadTokenSet(BIGMODEL_PROVIDER_ID);
+      // token 读取可能长时间阻塞（慢 IO 或与登录/切换并发）；恢复后必须复核，
+      // hydra 移除互斥清空后 BigModel 槽位在切换后仍存活，不能把旧会话的
+      // token 继续交给后台迁移使用。
+      if (
+        this.oauthSessionGeneration !== expectedGeneration ||
+        (await this.repo.getActiveProvider()) !== BIGMODEL_PROVIDER_ID
+      ) {
+        log("restoreCachedSession skipped BigModel token migration after blocked token load");
+        return null;
+      }
+      return tokenSet;
     });
   }
 
@@ -512,6 +528,11 @@ export class OAuthService implements IOAuthService {
     expected: Readonly<Record<string, string | null>>,
     isStillCurrent: () => boolean,
   ): Promise<void> {
+    // hydra: the shared zcodejwttoken slot is the only cross-provider conflict.
+    // Freeze the outgoing active account's tokens BEFORE the atomic CAS commit
+    // overwrites the mirror, so switching back to it can restore them
+    // (no-op when no account is active, e.g. first login).
+    await this.repo.freezeCurrentActiveTokens();
     const committed = await this.repo.commitSession(
       expected,
       provider,
@@ -524,6 +545,7 @@ export class OAuthService implements IOAuthService {
     // 条件失败表示另一写入者已经改变会话；不能用回滚再覆盖对方的新登录。
     if (!committed) throw new Error("OAuth 会话已变化，请重新发起登录");
     this.oauthSessionGeneration += 1;
+
     this.sessionChanges.fire("signed-in");
   }
 
@@ -1333,6 +1355,20 @@ export class OAuthService implements IOAuthService {
     if (!accountIdentities) return;
     await this.cancelPending();
     await this.notifyProvidersLogout(providers, accountIdentities);
+  }
+
+  async listAccounts(): Promise<OAuthAccountSummary[]> {
+    return this.repo.listAccounts();
+  }
+
+  async switchAccount(provider: OAuthProviderId, accountId: string): Promise<void> {
+    await this.runSessionMutation(async () => {
+      // 世代推进让进行中的恢复/刷新任务按过期处理，与登出同级；
+      // 切换不触发 onProviderLogout——派生凭据按账号隔离保留，不得误删。
+      this.oauthSessionGeneration += 1;
+      await this.repo.switchToAccount({ provider, accountId });
+    });
+    await this.cancelPending();
   }
 
   async cancelPending(provider?: OAuthProviderId): Promise<void> {
