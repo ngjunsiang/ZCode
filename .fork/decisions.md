@@ -692,8 +692,16 @@ CAS → obsolete settlement → row delete); cancelling existing schedules when
 the toggle turns off (silent removal of a scheduled user-visible card would
 surprise; cards remain manageable in Settings → Automations).
 
-**Verification.** (filled at landing) N16/N17 vitest matrices; typecheck; lint;
-architecture:check --changed.
+**Verification.** N16 vitest 7/7 + N17 vitest 10/10 (jsdom renderHook, mocked
+agentService; default-on matrix incl. remount suppression, one-attempt,
+first-list guard, web-remote inertness); affected suites green — shared
+appSettings, ui settingsPageConfig / settingsDataBaseDirControl plus 8 wider
+settings/i18n suites (126 cases total across the runs); typecheck 0 errors;
+lint 0 errors / 64 baseline warnings (unchanged from ADR-024-era baseline; the
+3 warnings located in edited files sit on untouched upstream lines);
+architecture:check --changed 0 violations. Desktop dogfood pending (user runs
+the feature branch for a day against real usage quotas before merge to
+patch/3.15.1).
 
 **Not contributed upstream.** Same intake situation as ADR-022; lives as fork
 patches U59–U65 / N16–N17 on `feature/auto-resume-default/3.15.1`.
