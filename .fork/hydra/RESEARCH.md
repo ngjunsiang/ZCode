@@ -300,3 +300,27 @@ in) as one deliberate step.
 
 Verified: port+registry suites 229/229; full services 3179 pass / 1
 pre-existing env failure; typecheck; oxlint clean; architecture clean.
+
+### 2026-10-15 — rebase: hydra trace onto the daily-driver fork line
+
+User decision: hydra inherits the fork-line improvements.Topology after
+rebase (--rebase-merges, topology preserved):
+
+- `hydra/patch/3.15.1` (c78e44fa) = `patch/3.15.1` (be841085, ~40 fork
+  commits: production identity, auto-resume, packaging, ADR-014..24) + full
+  hydra trace. Replayed with ZERO conflicts — the fork delta on hydra-touched
+  files is a single unrelated hook (`useWorkspaceTaskLists.ts`); the fork
+  never touched the oauth layer on the 3.15.1 line.
+- `hydra/patch/3.15.3` (81be4c64 + mirror-key adaptation follow-up) = fork
+  `patch/3.15.3` (122c7dbc, adds U54-U58 official ports) + hydra trace.
+  The interim cherry-picks (ADR-021, U54-58) were dropped from the trace via
+  rebase-todo filtering — the base already contains them. One conflict class:
+  oauthService import union (resolved: keep both). Follow-up commit adapts
+  the ported `loadCachedSessionTokens` to the store mirror-key helpers.
+- Stale pre-rebase refs deleted: hydra/exp/01..04, backup branch.
+
+Verified: 3.15.3 — typecheck, oauth/port/registry/remote-authority/login
+suites 219/219, lint, architecture; full services 3179 pass with 8
+pre-existing failures (1 environmental skillsService + 7
+zcodeLegacyTaskCompatTaskIndex that reproduce identically on the pure fork
+base — not hydra regressions). 3.15.1 — typecheck + core suites 201/201.
