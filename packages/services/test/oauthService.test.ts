@@ -2977,11 +2977,18 @@ describe("oauthService", () => {
     await credentialServiceStub.save("oauth:bigmodel:user_info", JSON.stringify(cachedUser));
 
     let blockedBigModelTokenLoad = false;
+    let bigModelAccessTokenReads = 0;
     vi.spyOn(credentialServiceStub, "load").mockImplementation(async (key) => {
-      if (key === "oauth:bigmodel:access_token" && !blockedBigModelTokenLoad) {
-        blockedBigModelTokenLoad = true;
-        markTokenLoadStarted();
-        await tokenLoadCanFinish;
+      if (key === "oauth:bigmodel:access_token") {
+        bigModelAccessTokenReads += 1;
+        // 修复依据（官方 3.15.2/3.15.3）：恢复批次本身会读一次 access token（本地过期检查），
+        // 竞态点改为阻塞第二次读取——后台 BigModel profile 迁移的 loadTokenSet——
+        // 继续复现“迁移 token 读取与 provider 切换竞速”的原始场景。
+        if (bigModelAccessTokenReads === 2 && !blockedBigModelTokenLoad) {
+          blockedBigModelTokenLoad = true;
+          markTokenLoadStarted();
+          await tokenLoadCanFinish;
+        }
       }
       return credentialStore.get(key) ?? null;
     });

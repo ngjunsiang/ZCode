@@ -402,6 +402,7 @@ import { createOAuthService } from "./oauth/oauthService.js";
 import {
   isOAuthBusinessRequest,
   isCurrentOAuthCredentialRequest,
+  resolveOAuthBusinessCredentialValidationRequest,
 } from "#src/oauth/oauthUnauthorizedRequest.js";
 import { createOAuthProviderLogoutHandler } from "./oauth/oauthProviderLogout.js";
 import { OAuthCredentialRepo } from "./oauth/repo/oauthCredentialRepo.js";
@@ -1293,6 +1294,10 @@ export function createLocalServices(options: {
       isCurrentOAuthCredentialRequest({ input, headers, credentialService }),
     isBusinessUnauthorizedRequest: (input, _headers) =>
       isOAuthBusinessRequest({ input, credentialService }),
+    // 修复依据（官方 3.15.2/3.15.3）：403/空正文不再直接判死会话，先用当前凭据
+    // 复核一次 getCustomerInfo（并发去重）；确实失效才走 onZcodeJwtInvalid 清理登录态。
+    resolveBusinessCredentialValidationRequest: (input, headers) =>
+      resolveOAuthBusinessCredentialValidationRequest({ input, headers, credentialService }),
     resolveZCodeEndpointOrigin: resolveCurrentZCodeEndpointOrigin,
   });
   const systemService = createSystemService();

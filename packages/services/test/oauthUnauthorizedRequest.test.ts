@@ -49,19 +49,29 @@ describe("当前 App 登录凭据的 HTTP 401 识别", () => {
   });
 
   it.each([
+    "https://api.z.ai/api/anthropic/v1/messages",
+    "https://untrusted.example/api/biz/customer/getCustomerInfo",
+    "https://api.z.ai.evil.example/api/biz/customer/getCustomerInfo",
+  ])("不扩散至非业务路径、错误域名或其它环境：%s", async (url) => {
+    const fixture = createFixture();
+    await fixture.client.request(url, { headers: { Authorization: "Bearer zai-business-token" } });
+    expect(fixture.notified).not.toHaveBeenCalled();
+  });
+
+  // 修复依据（官方 3.15.2/3.15.3）：业务识别改为 /api/biz/、/api/pay/ 前缀匹配后，
+  // 原先被精确白名单漏掉的业务路由（支付、订单计算、组织 api-key 等）也参与登录态分类，
+  // 不再出现业务 401 后会话既不可用又不清理、用户被迫反复重新登录的状态。
+  it.each([
     "https://api.z.ai/api/biz/pay/preview",
     "https://api.z.ai/api/pay/stripe/pay",
     "https://api.z.ai/api/biz/subscription/enterprise/v2/order/calculate",
     "https://api.z.ai/api/biz/v1/organization/org/projects/project/api_keys",
-    "https://api.z.ai/api/biz/v1/organization/org/projects/project/api_keys/copy/key",
-    "https://api.z.ai/api/anthropic/v1/messages",
-    "https://untrusted.example/api/biz/customer/getCustomerInfo",
-    "https://api.z.ai.evil.example/api/biz/customer/getCustomerInfo",
     "https://api.z.ai/api/biz/customer/getCustomerInfo/other",
-  ])("不扩散至支付、API key、错误域名/环境或其它路径：%s", async (url) => {
+  ])("前缀新增覆盖的业务路径 401 会通知失效：%s", async (url) => {
     const fixture = createFixture();
-    await fixture.client.request(url, { headers: { Authorization: "Bearer zai-business-token" } });
-    expect(fixture.notified).not.toHaveBeenCalled();
+    fixture.fetchImpl.mockResolvedValueOnce(Response.json({ code: 401, success: false }));
+    await fixture.client.request(url, { headers: { Authorization: "zai-business-token" } });
+    expect(fixture.notified).toHaveBeenCalledOnce();
   });
 
   it.each(["", "old-zai-token", "model-api-key", "Bearer model-api-key"])(
@@ -116,15 +126,26 @@ describe("当前 App 登录凭据的 HTTP 401 识别", () => {
     expect(fixture.notified).not.toHaveBeenCalled();
   });
 
-  it.each([403, 500])("HTTP %i 不因业务正文提示过期而登出", async (status) => {
+  it("HTTP 500 不因业务正文提示过期而登出", async () => {
     const fixture = createFixture();
     fixture.fetchImpl.mockResolvedValueOnce(
-      new Response('{"code":401,"msg":"token expired"}', { status }),
+      new Response('{"code":401,"msg":"token expired"}', { status: 500 }),
     );
     await fixture.client.request("https://api.z.ai/api/biz/customer/getCustomerInfo", {
       headers: { Authorization: "zai-business-token" },
     });
     expect(fixture.notified).not.toHaveBeenCalled();
+  });
+
+  it("HTTP 403 携带业务 401 正文时明确判失效（官方 3.15.3 观察面扩展到 403）", async () => {
+    const fixture = createFixture();
+    fixture.fetchImpl.mockResolvedValueOnce(
+      Response.json({ code: 401, msg: "登录状态已过期", success: false }, { status: 403 }),
+    );
+    await fixture.client.request("https://api.z.ai/api/biz/customer/getCustomerInfo", {
+      headers: { Authorization: "zai-business-token" },
+    });
+    expect(fixture.notified).toHaveBeenCalledOnce();
   });
 
   it.each(["bigmodel", "zai"] as const)(
@@ -152,8 +173,6 @@ describe("当前 App 登录凭据的 HTTP 401 识别", () => {
   it.each([
     ["https://api.z.ai/api/biz/customer/getCustomerInfo", "old-token"],
     ["https://api.z.ai/api/biz/subscription/enterprise/v2/pricing", "model-api-key"],
-    ["https://api.z.ai/api/biz/pay/preview", "zai-business-token"],
-    ["https://api.z.ai/api/biz/subscription/enterprise/v2/order/calculate", "zai-business-token"],
     [
       "https://untrusted.example/api/biz/team/subscribe/product/querySubscribeDetail",
       "zai-business-token",

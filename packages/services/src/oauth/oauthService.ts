@@ -6,6 +6,7 @@ import {
   type ApiClient,
   BIGMODEL_PROVIDER_ID,
   ZAI_PROVIDER_ID,
+  isCredentialDecryptError,
   type OAuthCallbackResult,
   type OAuthCachedSessionRestoreResult,
   type OAuthProviderId,
@@ -206,18 +207,53 @@ export class OAuthService implements IOAuthService {
       return { status: "signed-out" };
     }
 
-    // 启动缓存恢复只需要检查共享 zcode JWT；若通过 loadActiveTokenSet 连带读取
-    // provider access token，会把原本后台执行的 BigModel profile 迁移重新阻塞到首屏恢复链路。
-    const zcodeJwtToken = (await this.credentialService.load(ZCODE_JWT_TOKEN_KEY))?.trim() ?? "";
-    if (zcodeJwtToken && resolveJwtExpiration(zcodeJwtToken, this.now()).kind === "expired") {
-      serviceLog.info("cached session invalidated because zcode JWT expired", {
+    // 修复依据（官方 3.15.2/3.15.3）：启动缓存恢复要同时检查共享 zcode JWT 与 provider
+    // access token 的本地过期时间。3.15.1 只查 JWT，access token 本地过期时仍按已登录
+    // 恢复展示态，随后每个业务请求都失败，用户被迫反复重新登录（设置页连接套餐失败）。
+    // 批量读取（而非 loadActiveTokenSet）避免把后台 BigModel profile 迁移阻塞到首屏恢复链路。
+    let cachedTokens: Array<{ key: string; value: string }>;
+    try {
+      cachedTokens = await Promise.all(
+        [ZCODE_JWT_TOKEN_KEY, `oauth:${activeProvider}:access_token`].map(async (key) => ({
+          key,
+          value: (await this.credentialService.load(key))?.trim() ?? "",
+        })),
+      );
+    } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+      // 修复依据（官方 3.15.2/3.15.3）：凭据读不出可能是瞬态解密失败或并发修复。
+      // 先在会话队列里复核一次：复核读到数据说明会话仍可用，重跑恢复；
+      // 仍读不出才等价强制登出（repo 内部已清理损坏会话），不能读一次失败就清登录。
+      const shouldSignOut = await this.runSessionMutation(async () => {
+        if (
+          this.oauthSessionGeneration !== restoreGeneration ||
+          (await this.repo.loadCachedSessionTokens(activeProvider)) !== null
+        ) {
+          return false;
+        }
+        this.oauthSessionGeneration += 1;
+        return true;
+      });
+      return shouldSignOut ? { status: "signed-out" } : this.restoreCachedSessionState();
+    }
+
+    const expiredToken = cachedTokens.find(
+      ({ value }) => value && resolveJwtExpiration(value, this.now()).kind === "expired",
+    );
+    const zcodeJwtToken = cachedTokens[0]?.value ?? "";
+    if (expiredToken) {
+      serviceLog.info("cached session invalidated because login credential expired", {
         provider: activeProvider,
+        credentialKey: expiredToken.key,
       });
       const invalidated = await this.invalidateExpiredCachedSession(
         restoreGeneration,
         activeProvider,
         profile,
-        zcodeJwtToken,
+        expiredToken.value,
+        expiredToken.key,
       );
       if (!invalidated) {
         return this.restoreCachedSessionState();
@@ -272,23 +308,28 @@ export class OAuthService implements IOAuthService {
     expectedGeneration: number,
     expectedProvider: OAuthProviderId,
     expectedProfile: OAuthUserProfile,
-    expectedJwt: string,
+    expectedTokenValue: string,
+    expectedTokenKey: string = ZCODE_JWT_TOKEN_KEY,
   ): Promise<boolean> {
     const invalidated = await this.runSessionMutation(async () => {
       const currentProvider = await this.repo.getActiveProvider();
       const currentProfile = await this.repo.loadUserProfile(expectedProvider);
-      const currentJwt = (await this.credentialService.load(ZCODE_JWT_TOKEN_KEY))?.trim() ?? "";
+      const currentTokenValue =
+        (await this.credentialService.load(expectedTokenKey))?.trim() ?? "";
       if (
         this.oauthSessionGeneration !== expectedGeneration ||
         currentProvider !== expectedProvider ||
         !currentProfile ||
         !isSameOAuthProfile(currentProfile, expectedProfile) ||
-        currentJwt !== expectedJwt
+        currentTokenValue !== expectedTokenValue
       ) {
         // 启动恢复读取过期凭据后，新登录或 provider 切换可能已经完成；
         // 旧恢复任务只能清理仍与其快照完全一致的会话，不能误删刚写入的新认证状态。
-        serviceLog.info("skipped stale expired JWT session invalidation", {
+        // 复核 key 固定为触发过期的那把凭据（zcode JWT 或 provider access token），
+        // 保证 CAS 校验的是做出清理决策时所见的同一个值。
+        serviceLog.info("skipped stale expired login credential session invalidation", {
           provider: expectedProvider,
+          credentialKey: expectedTokenKey,
         });
         return false;
       }
@@ -303,8 +344,8 @@ export class OAuthService implements IOAuthService {
     try {
       await this.notifyProviderLogout(expectedProvider, expectedProfile.id);
     } catch (error) {
-      // JWT 已过期时主认证事实必须先失效；派生 provider 清理失败不能把 UI 留在伪登录态。
-      serviceLog.warn("expired JWT derived provider cleanup failed", {
+      // 登录凭据已过期时主认证事实必须先失效；派生 provider 清理失败不能把 UI 留在伪登录态。
+      serviceLog.warn("expired login credential derived provider cleanup failed", {
         provider: expectedProvider,
         error,
       });

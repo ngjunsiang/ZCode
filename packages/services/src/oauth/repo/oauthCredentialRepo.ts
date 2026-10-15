@@ -318,6 +318,31 @@ export class OAuthCredentialRepo {
     }
   }
 
+  /**
+   * 修复依据（官方 3.15.2/3.15.3）：启动恢复需要同时检查共享 zcode JWT 与 provider
+   * access token 的本地过期时间。这里一次批量读出两把 key（空值按 "" 返回，由调用方
+   * 判空），解密失败走等价强制登出的 clearCorruptOAuthSession 并返回 null，供
+   * OAuthService 在会话队列里做 CAS 复核后决定重试还是登出。
+   */
+  async loadCachedSessionTokens(
+    provider: OAuthProviderId,
+  ): Promise<Array<{ key: string; value: string }> | null> {
+    try {
+      return await Promise.all(
+        [ZCODE_JWT_TOKEN_KEY, accessTokenKey(provider)].map(async (key) => ({
+          key,
+          value: (await this.credentialService.load(key))?.trim() ?? "",
+        })),
+      );
+    } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+      await this.clearCorruptOAuthSession();
+      return null;
+    }
+  }
+
   async saveTokenSet(provider: OAuthProviderId, tokenSet: OAuthTokenSet): Promise<void> {
     await this.credentialService.save(accessTokenKey(provider), tokenSet.accessToken);
 
