@@ -166,3 +166,46 @@ oauthService.test.ts contract updated: registry keys (`oauth:accounts`,
 `oauth:active_account`) joined the expected session-wipe key set.
 
 Next: exp-02 — persistOAuthSession keeps both logins + switch primitive.
+
+### 2026-10-15 — exp-02: coexisting logins + switchAccount (061082dc)
+
+Contract change (spec): the "互斥身份域" rule is dead. Upstream tests pinning
+the cross-login wipe (`clears the opposite OAuth provider…`,
+`App OAuth 入口切换 active provider`) now assert **coexistence** — the other
+provider's login survives in its mirror slots + registry entry, switchable
+via the account registry.
+
+Landed:
+
+- `persistOAuthSession` freezes the outgoing account's tokens before writing
+  the new JWT (shared-slot clobber containment), captures/rolls back the
+  active **pointer ref** (not just provider), and activates the logged-in
+  account **ref** — provider-primary activation corrupts same-provider
+  second logins (found by the new switch test: profile written onto the
+  wrong entry, then reconcile split the registry inconsistently).
+- `repo.saveUserProfile` routes by the incoming profile's identity
+  (`deriveAccountId`), not by provider-primary.
+- `IOAuthService.listAccounts()` + `switchAccount(provider, accountId)`:
+  switch = freeze outgoing → activate target → unfreeze its copy; session-
+  queue serialized; generation bumped; **no** `onProviderLogout` (derived
+  per-account keys must survive switches). Same-provider switch to an
+  account with no frozen copy clears that provider's mirror tokens instead
+  of leaking the outgoing account's tokens into it.
+- BigModel cached-profile migration now re-verifies generation + active
+  provider **after** its (potentially long-blocked) token load. With
+  coexistence the slots survive a switch, so the pre-load guard alone let a
+  stale migration fetch post-switch (`races with provider switch` test).
+
+Still true from exp-01: mirror-first tokens; reconcile never reads token
+slots; provider-scoped reads are pointer-free mirror reads.
+
+Open for exp-03 (UI): switch is transactional at the service layer, but the
+renderer still updates nothing on switch — the popup must refresh user/
+plan/quota stores after `switchAccount` resolves (mirroring
+`handleOAuthCallbackSuccess`), or v1 ships switch-then-relaunch. "Add
+account" reuses the existing login entry; per-account sign-out stays
+active-only (logoutAll covers the rest) until exp-04.
+
+Verification: oauth + remote-authority suites 224/224; full services suite
+3167 passed / 1 pre-existing env failure (skillsService HOME, reproduces on
+base); typecheck clean; oxlint 0/0 changed files; architecture clean.
