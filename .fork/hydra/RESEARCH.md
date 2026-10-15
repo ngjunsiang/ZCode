@@ -112,4 +112,57 @@ while N accounts live underneath.
 - Forked `hydra` from `main` @ `aac47556`; worktree at `C:\nyjc-edtech\hydra`
   (daily-driver checkout stays on `patch/3.15.1`).
 - Research summary + constraints above distilled from the source sweep.
-- Next: exp-01 branch.
+- Git constraint: a branch literally named `hydra` cannot coexist with
+  `hydra/3.15.1` (ref namespace conflict) — the version branch IS the line
+  root, mirroring how `patch/*` never had a bare `patch` branch.
+
+### 2026-10-15 — exp-01 merged: per-login account registry (cac25653)
+
+Design converged through two rejected drafts (both caught by upstream tests):
+
+1. *Reconcile that read token slots* — blocked startup restore (the
+   `migration token load races with provider switch` test gates the token read
+   and requires restore to resolve without it). Rejected: **reconcile must
+   never read token slots**; it lives on the startup hot path.
+2. *Per-account token keys as primary storage* — same blocking problem plus
+   staleness vs external writers. Rejected.
+
+**Landed design — mirror-first tokens:**
+
+- Active account's tokens live ONLY in the legacy `oauth:*` slots
+  (bit-for-bit old behavior; official build / CLI always read fresh; no
+  duplication to drift).
+- `oauth:account:{provider}:{id}:*` keys hold **frozen copies for inactive
+  accounts only**, written lazily by the freeze step of a same-provider
+  switch. Cross-provider mirror slots are independent, so cross-provider
+  switching needs no copies at all.
+- `oauth:accounts` index (summaries) + `oauth:active_account` pointer JSON.
+- **Pending pointer** (`{provider, accountId: "pending"}`): a bare legacy
+  `active_provider` is login state under old semantics even without
+  profile/token (restoreSession re-fetches via API, auth_token migration
+  back-fills); pending promotes to a real entry when a profile lands
+  (`saveActiveUserProfile`).
+- Reconcile (idempotent, provider/profile level only): external provider
+  switch → import + follow; same-provider profile-id change → follow;
+  external wipe → treat as logout and drop the local entry.
+- Provider-scoped reads (`loadTokenSet` / `loadUserProfile`) stay **direct
+  mirror reads** — no pointer/registry requirement. Pinned by
+  `localServicesRemoteAuthority` (request auth resolves from slots seeded
+  without `active_provider`).
+- Corrupt-registry wipe can't enumerate per-account keys (ICredentialService
+  has no list); falls back to deriving the most recent account from legacy
+  user_info. Older accounts' keys become inert orphans — documented tradeoff.
+
+**Known limitation (drives exp-02):** the shared `zcodejwttoken` slot is
+per-account but clobbered on every login (upstream semantics; upstream tests
+pin the clobber). Account switching must therefore **freeze the outgoing
+account before any mirror write**, or its JWT is lost. Cross-provider
+coexistence in exp-01 keeps access/refresh but not JWTs.
+
+Verification: full `packages/services` suite 3165 passed / 1 failed — the
+failure (`skillsService` HOME-dir test) reproduces identically on base;
+typecheck clean; oxlint 0/0 on changed files; architecture:check clean.
+oauthService.test.ts contract updated: registry keys (`oauth:accounts`,
+`oauth:active_account`) joined the expected session-wipe key set.
+
+Next: exp-02 — persistOAuthSession keeps both logins + switch primitive.
