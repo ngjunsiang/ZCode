@@ -15,6 +15,7 @@ import {
 } from "@zcode/shared";
 import {
   TID_SETTINGS_ASK_USER_QUESTION_AUTO_RESOLUTION_SWITCH,
+  TID_SETTINGS_AUTO_RESUME_SWITCH,
   TID_SETTINGS_NATIVE_SEARCH_SWITCH,
   TID_SETTINGS_REPLY_LANGUAGE_INPUT,
   TID_SETTINGS_TOOL_SEARCH_SELECT,
@@ -173,6 +174,13 @@ export function GeneralSectionContent({
   setLocalePreference,
   setNotificationEnabled,
   setNotificationSoundEnabled,
+  messageStreamShowReasoning,
+  messageStreamShowTodos,
+  zcodeInteractionBehavior,
+  askUserQuestionAutoResolutionEnabled = true,
+  autoResumeEnabled = true,
+  modelIoFullRetentionEnabled = false,
+
   onDataBaseDirChange,
   onSelectDataBaseDir,
   onTerminalInheritSystemProfileChange = async () => {},
@@ -186,6 +194,13 @@ export function GeneralSectionContent({
   onDesktopChromiumHardwareAccelerationChange = async () => {},
   onReceivePreviewUpdatesChange,
   onAutoDownloadAndInstallUpdatesChange,
+  onMessageStreamShowReasoningChange,
+  onMessageStreamShowTodosChange,
+  onZCodeInteractionBehaviorChange,
+  onAskUserQuestionAutoResolutionEnabledChange = async () => {},
+  onAutoResumeEnabledChange = async () => {},
+  onModelIoFullRetentionEnabledChange = async () => {},
+
   onOpenOnboardingDialog,
 }: {
   localePreference: LocalePreference;
@@ -228,6 +243,14 @@ export function GeneralSectionContent({
   setLocalePreference: (locale: LocalePreference) => void;
   setNotificationEnabled: (enabled: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
+  messageStreamShowReasoning: boolean;
+  messageStreamShowTodos: boolean;
+  zcodeInteractionBehavior: ZCodeInteractionBehavior;
+  askUserQuestionAutoResolutionEnabled?: boolean;
+  /** fork ADR-026：配额中断自动调度恢复；缺省 true。 */
+  autoResumeEnabled?: boolean;
+  modelIoFullRetentionEnabled?: boolean;
+
   onDataBaseDirChange: (dir: string) => Promise<void>;
   onSelectDataBaseDir: () => Promise<string | null>;
   onTerminalInheritSystemProfileChange: (enabled: boolean) => Promise<void>;
@@ -241,6 +264,13 @@ export function GeneralSectionContent({
   onDesktopChromiumHardwareAccelerationChange?: (enabled: boolean) => Promise<void>;
   onReceivePreviewUpdatesChange: (enabled: boolean) => Promise<void>;
   onAutoDownloadAndInstallUpdatesChange: (enabled: boolean) => Promise<void>;
+  onMessageStreamShowReasoningChange: (enabled: boolean) => Promise<void>;
+  onMessageStreamShowTodosChange: (enabled: boolean) => Promise<void>;
+  onZCodeInteractionBehaviorChange: (behavior: ZCodeInteractionBehavior) => Promise<void>;
+  onAskUserQuestionAutoResolutionEnabledChange?: (enabled: boolean) => Promise<void>;
+  onAutoResumeEnabledChange?: (enabled: boolean) => Promise<void>;
+  onModelIoFullRetentionEnabledChange?: (enabled: boolean) => Promise<void>;
+
   onOpenOnboardingDialog: () => void;
 }) {
   const { intl } = useZCodeIntl();
@@ -876,6 +906,8 @@ export function AgentBehaviorSectionContent({
   messageStreamShowTodos,
   zcodeInteractionBehavior,
   askUserQuestionAutoResolutionEnabled = true,
+  /** fork ADR-026: auto-schedule quota recovery; defaults on. */
+  autoResumeEnabled = true,
   modelIoFullRetentionEnabled = false,
   onNativeSearchEnhancementsEnabledChange,
   onTotalTokensReminderEnabledChange = async () => {},
@@ -884,6 +916,7 @@ export function AgentBehaviorSectionContent({
   onMessageStreamShowTodosChange,
   onZCodeInteractionBehaviorChange,
   onAskUserQuestionAutoResolutionEnabledChange = async () => {},
+  onAutoResumeEnabledChange = async () => {},
   onModelIoFullRetentionEnabledChange = async () => {},
   replyLanguage,
 }: {
@@ -896,6 +929,8 @@ export function AgentBehaviorSectionContent({
   messageStreamShowTodos: boolean;
   zcodeInteractionBehavior: ZCodeInteractionBehavior;
   askUserQuestionAutoResolutionEnabled?: boolean;
+  /** fork ADR-026：配额中断自动调度恢复；缺省 true。 */
+  autoResumeEnabled?: boolean;
   modelIoFullRetentionEnabled?: boolean;
   onNativeSearchEnhancementsEnabledChange: (enabled: boolean) => Promise<void>;
   onTotalTokensReminderEnabledChange?: (enabled: boolean) => Promise<void>;
@@ -904,6 +939,7 @@ export function AgentBehaviorSectionContent({
   onMessageStreamShowTodosChange: (enabled: boolean) => Promise<void>;
   onZCodeInteractionBehaviorChange: (behavior: ZCodeInteractionBehavior) => Promise<void>;
   onAskUserQuestionAutoResolutionEnabledChange?: (enabled: boolean) => Promise<void>;
+  onAutoResumeEnabledChange?: (enabled: boolean) => Promise<void>;
   onModelIoFullRetentionEnabledChange?: (enabled: boolean) => Promise<void>;
   /** 本机设置快照里的 Agent 回复语言；写入走 Main（见 ReplyLanguageSetting）。 */
   replyLanguage?: string;
@@ -1051,6 +1087,21 @@ export function AgentBehaviorSectionContent({
               data-testid={TID_SETTINGS_ASK_USER_QUESTION_AUTO_RESOLUTION_SWITCH}
               onCheckedChange={(checked) => {
                 void onAskUserQuestionAutoResolutionEnabledChange(checked);
+              }}
+            />
+          }
+        />
+        {/* fork ADR-026 规则 11：行在所有平台渲染，效果仅桌面端（web-remote 无 automation RPC）。 */}
+        <SettingsRow
+          label={intl.formatMessage({ id: "settings.autoResume" })}
+          description={intl.formatMessage({ id: "settings.autoResumeDescription" })}
+          control={
+            <Switch
+              aria-label={intl.formatMessage({ id: "settings.autoResume" })}
+              checked={autoResumeEnabled}
+              data-testid={TID_SETTINGS_AUTO_RESUME_SWITCH}
+              onCheckedChange={(checked) => {
+                void onAutoResumeEnabledChange(checked);
               }}
             />
           }

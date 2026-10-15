@@ -5797,6 +5797,22 @@ export function SessionPane({
       void autoResumeRef.current?.cancelOnManualResume();
     },
   });
+  // fork Auto-Resume：调度/取消/已调度派生；automation RPC 不可用（web-remote）时整体为 null。
+  // ADR-026 规则 8：设置开（缺省 true）⇒ 满足条件时自动调度，无需点击。
+
+  const autoResume = useAutoResume({
+    sessionId: snapshot?.sessionId ?? sessionId,
+    sessionTitle: snapshot?.meta.title?.trim() ?? null,
+    workspacePath,
+    ...(workspaceIdentity ? { workspaceIdentity } : {}),
+    agentService: baseWorkspaceServices.zcodeAgentService,
+    resetAt: quotaResume?.nextResetAt ?? null,
+    enabled: quotaResume !== null,
+    autoEnabled: sharedSettings?.autoResumeEnabled !== false,
+  });
+  useEffect(() => {
+    autoResumeRef.current = autoResume;
+  }, [autoResume]);
   // Bug 根因：当前显示哪条错误与「关闭」归谁曾在两处分别判断——渲染按「未关闭」状态取横幅，关闭处理却按
   // 原始状态分支；用户关掉模型失效横幅后，后续投影错误横幅的关闭按钮会一直落到已关闭的那条上而失效。
   // 这里把显示与关闭动作在同一处派生，两者不可能再分叉。
@@ -5841,20 +5857,6 @@ export function SessionPane({
     sessionModelUnavailable,
   ]);
   const composerError = composerBanner?.error ?? null;
-  // fork Auto-Resume: schedule/cancel/scheduled-chip derivation; null when the
-  // automation RPC is unavailable (web-remote).
-  const autoResume = useAutoResume({
-    sessionId: snapshot?.sessionId ?? sessionId,
-    sessionTitle: snapshot?.meta.title?.trim() ?? null,
-    workspacePath,
-    ...(workspaceIdentity ? { workspaceIdentity } : {}),
-    agentService: baseWorkspaceServices.zcodeAgentService,
-    resetAt: quotaResume?.nextResetAt ?? null,
-    enabled: quotaResume !== null,
-  });
-  useEffect(() => {
-    autoResumeRef.current = autoResume;
-  }, [autoResume]);
   const retryConfigReadRow = snapshot?.rows.window.findLast(
     (row) => row.kind === "userInput" && row.origin === "realUser",
   );
