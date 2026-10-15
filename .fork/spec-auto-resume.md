@@ -1,6 +1,7 @@
 # Spec: Auto-Resume at quota reset (`action: "resumeTurn"` automations)
 
-Status: approved (2026-10-11 — all clarifications answered; see Resolved at bottom).
+Status: approved (2026-10-11 — all clarifications answered; see Resolved at bottom);
+**amended 2026-10-16 — default-on auto-scheduling (rules 8–11, scenarios 13–17; ADR-026)**.
 Owner: fork-local.
 Follows AGENTS.md spec-first rule. Extends `spec-resume-turn.md` (the Resume button)
 onto the automations feature (`automation-types.ts`, scheduler, host dispatch).
@@ -78,6 +79,45 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
      resume-kind cards (dispatch ignores both).
    - Button/chip reset-time rendering is locale-aware via the existing
      `formatQuotaResetTime` conventions (en "Oct 12, 15:05" / zh "10月12日 15:05").
+8. **Default-on auto-scheduling (ADR-026, 2026-10-16).** New app setting
+   `autoResumeEnabled` (`AppSettings`, Zod `.default(true)`; Settings → General row,
+   sibling of `askUserQuestionAutoResolution`). When ALL hold — quota detection hit
+   (rule 1 banner in place), `nextResetAt !== null`, the initial automation-list
+   refresh has settled and shows no scheduled row for the session, no suppression
+   for the boundary (rule 9), setting on, and the previous auto-attempt for this
+   boundary hasn't failed (rule 10) — the renderer auto-creates **exactly the
+   automation rule 2's click creates** (same params, same dedup, same cap-error
+   toast). Rule 2's button remains the manual path (also the only path while
+   suppressed / setting off / boundary unknown); after an auto-create the banner
+   simply shows the scheduled chip. Ordering guard: the auto-effect waits for the
+   first `listAllAutomations` to settle, so reopening a session with an existing
+   schedule does not double-create. Multi-window double-create (both windows
+   refreshed before either creates) remains possible and self-heals at fire time
+   (stale-exhausted CAS → obsolete settlement deletes the loser, rule 5).
+9. **Cancel = per-failure suppression (user decision 2026-10-16).** Clicking the
+   scheduled chip's cancel deletes the row (rule 6 unchanged) AND records
+   `sessionId → expiresAt = max(nextResetAt at cancel time, now)` in a
+   renderer-local persisted store (`autoResumeSuppressionStore`, localStorage via
+   the `startPlanQuotaReminderStore` pattern: prefix + injectable Storage +
+   prune-on-read; shared across windows of the same profile, never synced, not
+   server fact). While unexpired, the auto-effect must not re-create for that
+   session — including after app restart (that is why it persists). The manual
+   button ignores suppression (explicit click always schedules). Accepted edge:
+   the key is the *recorded* boundary, not a failure identity (none is available
+   renderer-side); if the server shifts the boundary past the recorded expiry
+   during the same failure, auto-scheduling resumes for the new boundary
+   (follow-the-server matches rule 4's re-arm philosophy).
+10. **One auto-attempt per boundary per mount.** A failed auto-create (cap,
+    RPC error) surfaces the existing toast and is NOT retried on a loop; an
+    in-renderer ref remembers the attempted boundary so the effect fires at most
+    once per (session, boundary) per renderer mount. Failure memory is NOT
+    persisted (unlike rule 9's cancel suppression) — restart retries once. The
+    manual button still retries freely.
+11. **Setting scope.** `autoResumeEnabled` off stops NEW auto-scheduling only;
+    already-scheduled automations keep their contract (fire, settle, delete per
+    rules 3–5). The General-page row renders on all platforms; its effect is
+    desktop-only in practice (web-remote has no automation RPC — the hook hides
+    there already, rule 1).
 
 ## Event order (owners)
 
@@ -98,6 +138,9 @@ click → automationCreate ─────────────────�
                              └ guard-rejected/stale ─ settlement:"obsolete" ─────────────▶ skipped run + DELETE row
 manual Resume success ─▶ automationDelete(bound id)
 archive/delete session ─▶ deleteResumeAutomationForTask (resume-kind only)
+quota banner + boundary known + setting on + first list settled + no row + not suppressed
+                      ─▶ useAutoResume auto-effect: automationCreate (identical to click, rule 8)
+chip cancel ─▶ automationDelete + suppression record (rule 9)
 ```
 
 ## State owners
@@ -110,6 +153,8 @@ archive/delete session ─▶ deleteResumeAutomationForTask (resume-kind only)
 | Button visibility/scheduled chip | renderer (derived from projection + entitlement + automation list) | zero new persisted renderer state |
 | Reset time (`nextResetTime`) | server entitlement snapshot | renderer formats; host re-checks at fire time |
 | Session archive/delete | `zcodeTaskServiceAdapter` | emits cleanup of resume-kind automation |
+| Cancel suppression (`sessionId → expiresAt`) | `autoResumeSuppressionStore` (renderer localStorage, N16) | rule 9: survives restart, never synced, pruned at expiry |
+| Auto-attempt memory (boundary → tried) | in-renderer refs inside `useAutoResume` | rule 10: per-mount only, not persisted |
 
 ## Interface
 
@@ -134,7 +179,11 @@ archive/delete session ─▶ deleteResumeAutomationForTask (resume-kind only)
 - **Renderer**: fork-new `useAutoResume` hook (create/cancel/scheduled-state);
   re-arm/horizon decision as pure function `automationResumePolicy` (services) so
   it is unit-testable; SessionPane wiring stays one hook call + one cancel call +
-  prop pass (U8 lesson).
+  prop pass (U8 lesson). **v2 (ADR-026):** hook gains `autoEnabled` param
+  (SessionPane passes `sharedSettings?.autoResumeEnabled !== false`); new
+  fork-new `autoResumeSuppressionStore` (renderer localStorage, N16) owns rule-9
+  suppression; `AppSettings.autoResumeEnabled?: boolean` (Zod default true, U59/
+  U60) with a Settings → General row (U61–U64).
 
 ## Acceptance scenarios
 
@@ -166,6 +215,19 @@ archive/delete session ─▶ deleteResumeAutomationForTask (resume-kind only)
 12. **Run now before reset**: card's run-now clicked while quota still exhausted →
     pre-check fails → manual run recorded failed, schedule intact (it still fires
     at the scheduled time).
+13. **Default-on (rule 8)**: quota failure with known boundary, setting on →
+    automation created without any click; banner shows the scheduled chip; the
+    automation behaves exactly as scenario 1 onward.
+14. **Cancel suppression (rule 9)**: chip cancel → row deleted + suppression
+    recorded; the auto-effect does not re-create (same mount and after renderer
+    restart); clicking the schedule button still creates one.
+15. **Setting off (rule 11)**: no auto-create; the manual button pair works as
+    v1; a schedule created earlier still fires and settles normally.
+16. **Auto-create failure (rule 10)**: cap/RPC error → the existing toast once;
+    no retry loop until the boundary changes or a remount happens; the manual
+    button remains.
+17. **Reopen with existing schedule (rule 8 ordering guard)**: session reopened
+    while a row is already scheduled → first list settles → no second create.
 
 ## Resolved (2026-10-11, via AskUserQuestion)
 

@@ -653,3 +653,47 @@ unreachable), flavor production, auto-update and telemetry endpoints off.
 self-update should not be hard-blocked by the update gate) is
 upstream-relevant, but the intake situation is unchanged (ADR-022 precedent);
 lives as fork patches U50/U51.
+
+## ADR-026: Auto-Resume default-on with Settings gate and per-failure cancel suppression  {2026-10-16}
+
+**Context.** Auto-Resume (spec-auto-resume.md, U16–U35 series) shipped as an
+opt-in button on the quota banner: every quota-interrupted session needs a
+manual click before the resume automation exists. The user hits usage quotas on
+working days and wants resumption to just happen; 2026-10-16 AskUserQuestion
+settled the two open design points — cancel semantics ("stay off for that
+failure", persisted, survives restart) and toggle placement (Settings →
+General, sibling of `askUserQuestionAutoResolution`).
+
+**Decision.** (1) `AppSettings.autoResumeEnabled` (Zod `.default(true)` —
+existing installs upgrade to on, fork-only distribution makes that acceptable)
+gates a renderer-side auto-schedule effect in `useAutoResume`: when the quota
+banner is up, the boundary is known, the initial `listAllAutomations` has
+settled with no scheduled row, and nothing suppresses the boundary, it creates
+exactly what the button click creates (same RPC, dedup, cap-toast; rules 8,
+spec amendment). The effect waits for the first list to settle so reopening a
+session with an existing schedule never double-creates. (2) Cancelling the
+scheduled chip records `sessionId → expiresAt = max(boundary, now)` in a new
+renderer-local persisted store (`autoResumeSuppressionStore`, localStorage via
+the `startPlanQuotaReminderStore` pattern — injectable Storage for tests,
+prune-at-expiry); the auto-effect honors it across restarts, the manual button
+ignores it. Keying is the recorded boundary, not a failure identity (none is
+plumbed to the renderer): if the server shifts the boundary beyond the
+recorded expiry mid-failure, auto-scheduling resumes for the new boundary —
+follow-the-server, same philosophy as the fire-time re-arm. (3) A failed
+auto-create (cap/RPC) toasts once and is remembered only in renderer refs —
+one attempt per (session, boundary) per mount, no retry loop, no persisted
+failure memory. (4) The setting only stops NEW auto-scheduling; existing
+schedules keep their contract.
+
+**Deliberately not built.** Failure-identity suppression keys; server-side or
+synced suppression (single-machine fork, renderer-local is the whole truth);
+multi-window create locking (the listing race self-heals via stale-exhausted
+CAS → obsolete settlement → row delete); cancelling existing schedules when
+the toggle turns off (silent removal of a scheduled user-visible card would
+surprise; cards remain manageable in Settings → Automations).
+
+**Verification.** (filled at landing) N16/N17 vitest matrices; typecheck; lint;
+architecture:check --changed.
+
+**Not contributed upstream.** Same intake situation as ADR-022; lives as fork
+patches U59–U65 / N16–N17 on `feature/auto-resume-default/3.15.1`.
