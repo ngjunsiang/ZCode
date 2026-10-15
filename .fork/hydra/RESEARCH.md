@@ -269,3 +269,34 @@ completion still closes via the oauthSuccessSeq effect (status must be
 
 Verified: loginPage/loginDialogProviders/loginFailureCancel 13/13,
 typecheck (pipefail), oxlint clean on changed files.
+
+### 2026-10-15 — sync: official 3.15.2/3.15.3 ports onto `hydra/patch/3.15.3`
+
+Diagnosis: `patch/3.15.1` did NOT move (local = origin = be841085; upstream
+main still aac47556). The movement was a new fork branch `patch/3.15.3`
+(122c7dbc, U54-U58: official 3.15.2/3.15.3 disassembly ports — auth session
+restore fixes, auto-update install lifecycle state machine, version bump).
+
+Absorbed following the fork convention: parity branch
+`hydra/patch/3.15.3` branched from `hydra/patch/3.15.1`, then ordered
+cherry-picks — 882aa334 ADR-021 (dependency of U57: `requestAppRelaunch`;
+first attempt without it left U57 referencing an undefined symbol), then
+U54-56 / U57 / U58. Cherry-pick resolutions on hydra: repo
+`loadCachedSessionTokens` re-expressed over the store mirror-key helpers
+(active tokens live in legacy slots); oauthService import union;
+`.fork/*` + desktop package.json taken theirs (hydra inherits fork
+governance docs + official-aligned versioning).
+
+The port self-tests (oauthCredentialValidation, oauthSessionRestore,
+autoUpdaterInstallPhase — 376 new lines) all pass against hydra registry:
+the auth fixes are compatible with the mirror-first layout, including the
+batch token-expiry check reading legacy slots directly.
+
+Open decision (recorded, not actioned): hydra/patch/3.15.1 still lacks the
+rest of the daily-driver fork delta (~40 commits: production identity,
+auto-resume, packaging, ADR-014..24). If hydra is to replace the daily
+driver, rebase the hydra trace onto patch/3.15.3 (or merge the fork line
+in) as one deliberate step.
+
+Verified: port+registry suites 229/229; full services 3179 pass / 1
+pre-existing env failure; typecheck; oxlint clean; architecture clean.
