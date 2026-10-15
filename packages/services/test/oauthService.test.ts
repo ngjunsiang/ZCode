@@ -84,6 +84,9 @@ const OAUTH_SESSION_CREDENTIAL_KEYS = [
   "oauth:zai:refresh_token",
   "oauth:zai:user_info",
   "zcodejwttoken",
+  // hydra registry：多账号注册表索引与活跃指针随会话清理一并删除
+  "oauth:accounts",
+  "oauth:active_account",
 ] as const;
 
 function expectDeletedOAuthSessionCredentials(
