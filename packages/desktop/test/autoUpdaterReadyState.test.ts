@@ -1092,6 +1092,9 @@ describe("autoUpdater ready state sync", () => {
     );
 
     autoUpdaterMock.emit("update-downloaded", { version: "0.1.25" });
+    // 修复依据（官方 3.15.3）：下载完成态改由 downloadUpdate() Promise 与事件 token
+    // 对账后应用，事件只负责暂存。这里等一个宏任务让 Promise 链跑完再断言。
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(getAutoUpdaterState()).toMatchObject({
       kind: "update-downloaded",
@@ -1820,7 +1823,7 @@ describe("autoUpdater ready state sync", () => {
     expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
   });
 
-  it("安装前退出准备失败时不会继续启动安装器或开发态重启", async () => {
+  it("安装前退出准备失败时进入 recovering 重启，不再停留在半退出状态", async () => {
     mockProcessPlatform("win32");
     const prepareError = new Error("host process still locked resources");
     const onBeforeQuitAndInstall = vi.fn(async () => {
@@ -1839,16 +1842,20 @@ describe("autoUpdater ready state sync", () => {
     expect(quitHandler).toBeTypeOf("function");
     await expect(quitHandler!()).rejects.toBe(prepareError);
 
-    // Bugfix: 安装前准备负责释放 Windows resources/glm 等随包资源锁。
-    // 如果准备失败还继续启动安装器，会再次形成 bundled runtime 半更新。
+    // 修复依据（官方 3.15.3）：安装前准备失败说明 shutdown 已经开始（窗口在关、
+    // host/agent 在回收），停留在原地只会复现“更新时应用无法正常退出”的挂起；
+    // 进入 recovering 立即重启，安装器仍然不能被绕过启动。
     expect(onBeforeQuitAndInstall).toHaveBeenCalledTimes(1);
     expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
-    expect(appMock.relaunch).not.toHaveBeenCalled();
-    expect(appMock.exit).not.toHaveBeenCalled();
     expect(loggerErrorMock).toHaveBeenCalledWith(
       "[auto-update] prepare quit and install failed:",
       prepareError,
     );
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      "[auto-update] install failed after shutdown started: relaunch app",
+    );
+    expect(appMock.relaunch).toHaveBeenCalledTimes(1);
+    expect(appMock.exit).toHaveBeenCalledWith(0);
   });
 
   it("没有已下载更新时安装请求不会执行退出准备", async () => {
@@ -2138,6 +2145,9 @@ describe("autoUpdater ready state sync", () => {
       downloadAvailableUpdate("test");
       expect(autoUpdaterMock.downloadUpdate).toHaveBeenCalledTimes(1);
       autoUpdaterMock.emit("update-downloaded", { version: "0.1.26" });
+      // 修复依据（官方 3.15.3）：下载完成态由 downloadUpdate() Promise 对账后应用，
+      // 事件先暂存；fake timers 下 advanceTimersByTimeAsync(0) 会跑完微任务链。
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(win.webContents.send).toHaveBeenCalledWith(PlatformChannels.UpdateReady, "0.1.26");
       expect(menuItem.label).toBe(
