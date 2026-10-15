@@ -1,7 +1,5 @@
 import { useCallback, useState } from "react";
 import type { OAuthAccountSummary } from "@zcode/shared";
-import { resolveProviderFamilyDomainFromOAuthProvider } from "@zcode/shared";
-import { setProviderFamilyDomain } from "@/lib/providerFamilyDomainSettings.js";
 import { refreshLatestModelProviderFamilySelectionAfterLogin } from "@/root/oauthProviderFamilySelectionRefresh.js";
 import { refreshRootProviderState } from "@/root/useRootProviderStateRefresh.js";
 import { handleOAuthCallbackSuccess } from "@/root/useRootOAuthEffects.js";
@@ -66,12 +64,6 @@ export function useAccountSwitcher() {
             refreshLatestModelProviderFamilySelectionAfterLogin({ provider, services }),
           refreshAppSettings,
           refreshProviderState: () => refreshRootProviderState(services),
-          setProviderFamilyDomain: async (provider) => {
-            const domain = resolveProviderFamilyDomainFromOAuthProvider(provider);
-            if (domain) {
-              await setProviderFamilyDomain(services.settingService, domain);
-            }
-          },
           setUser,
           setOAuthError,
           // 切换不是登录：遥测事件区分开，避免污染登录漏斗数据

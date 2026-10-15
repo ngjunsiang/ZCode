@@ -504,7 +504,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
                   disabled={accountSwitcher.isSwitching}
                 >
                   {accountSwitcher.isSwitching ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <LoaderCircle className="size-4 animate-spin" />
                   ) : (
                     <ArrowLeftRight className="size-4" />
                   )}
