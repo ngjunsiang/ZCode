@@ -209,3 +209,36 @@ active-only (logoutAll covers the rest) until exp-04.
 Verification: oauth + remote-authority suites 224/224; full services suite
 3167 passed / 1 pre-existing env failure (skillsService HOME, reproduces on
 base); typecheck clean; oxlint 0/0 changed files; architecture clean.
+
+### 2026-10-15 — exp-03: switcher UI (0dbad35f)
+
+Sidebar footer (WorkspaceSidebarFooter) gains an `ArrowLeftRight` icon
+button between the account pill and the settings/web-remote cluster — the
+position from the reference mock. Popup: registry account list (avatar /
+displayName / username, checkmark on active per DESIGN.md selection rule),
+"Add account", "Sign out…". Registry re-read on every open, so accounts
+added by the CLI or the official build appear without restart.
+
+Architecture: self-contained `useAccountSwitcher` hook (no prop drilling
+through the 6-hop shell chain) — `switchTo` calls the host
+`switchAccount` transaction, then reuses `handleOAuthCallbackSuccess` for
+the renderer-side refresh (user store, provider family domain, settings
+snapshot, Provider Runtime), so plan badge/quota/model availability follow
+the new account immediately. `handleOAuthCallbackSuccess` gained an
+optional `successTelemetryElementName` so switches report
+`app_account_switch` instead of polluting login-funnel telemetry.
+Root's `onLogin` is now always provided (while logged in it *is* "Add
+account"); the footer's existing `onLogin && !user` gate keeps the old
+Login item behavior. i18n: 4 new keys × en-US/zh-CN.
+
+Pending verification (honest gaps): no dev-launch visual smoke or E2E run
+yet — the button/popup rendering and the switch-then-refresh UX need a
+`pnpm dev:desktop` session and eventually an E2E case (interaction change
+per AGENTS.md). Not done in this pass; next session should do the visual
+smoke before this graduates anywhere near the daily driver.
+
+Verification this pass: typecheck clean; oxlint 0 errors (2 pre-existing
+main warnings untouched); architecture clean; footer/i18n/account UI
+suites 79/79 (automationTerminologyI18n, marketingTouchProvider,
+accountConnection*, codingPlanUsagePanel, rewardsMenuIcon,
+settingsHelpMenuEntry, settingsPageIntegratedTerminalShell).
