@@ -1,4 +1,5 @@
 import type {
+  OAuthAccountSummary,
   OAuthCachedSessionRestoreResult,
   OAuthCallbackResult,
   OAuthProviderId,
@@ -70,6 +71,18 @@ export interface IOAuthService {
    * @param provider - 可选；不传时取消当前 pending
    */
   cancelPending(provider?: OAuthProviderId): Promise<void>;
+
+  /**
+   * 已知登录账号列表（账号切换器数据源）；活跃账号排首位。
+   * hydra：同一 credentials.json 内并存多个登录实例。
+   */
+  listAccounts(): Promise<OAuthAccountSummary[]>;
+
+  /**
+   * 切换活跃账号：冻结 outgoing、激活目标、解冻其 token 副本。
+   * 目标账号不存在时抛错；与登录/登出共用会话队列串行化。
+   */
+  switchAccount(provider: OAuthProviderId, accountId: string): Promise<void>;
 }
 
 export const IOAuthService = createServiceDescriptor<IOAuthService>(ServiceChannels.OAuth);

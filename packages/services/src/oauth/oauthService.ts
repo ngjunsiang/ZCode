@@ -7,6 +7,7 @@ import {
   BIGMODEL_PROVIDER_ID,
   ZAI_PROVIDER_ID,
   isCredentialDecryptError,
+  type OAuthAccountSummary,
   type OAuthCallbackResult,
   type OAuthCachedSessionRestoreResult,
   type OAuthProviderId,
@@ -29,6 +30,7 @@ import {
 } from "./oauthProfileSchema.js";
 import { createOAuthProviderAdapters, type OAuthProviderAdapter } from "./providers/index.js";
 import { OAuthCredentialRepo } from "./repo/oauthCredentialRepo.js";
+import { deriveAccountId } from "./repo/oauthAccountStore.js";
 import { createOAuthRuntimeConfig } from "./runtimeConfig.js";
 import {
   buildDesktopOAuthRedirectUriFromEnv,
@@ -100,20 +102,12 @@ function isSameOAuthProfile(left: OAuthUserProfile, right: OAuthUserProfile): bo
   );
 }
 
-function resolveInactiveOAuthProvider(provider: OAuthProviderId): OAuthProviderId | null {
-  if (provider === ZAI_PROVIDER_ID) {
-    return BIGMODEL_PROVIDER_ID;
-  }
-  if (provider === BIGMODEL_PROVIDER_ID) {
-    return ZAI_PROVIDER_ID;
-  }
-  return null;
-}
-
 /**
  * OAuth 认证服务实现
  *
  * 在 host process 中运行，管理 OAuth 流程的完整生命周期。
+ * hydra：provider 身份域不再互斥（见 persistOAuthSession），
+ * 多账号并存由 OAuthCredentialRepo 的注册表承载。
  */
 export class OAuthService implements IOAuthService {
   private readonly credentialService: ICredentialService;
@@ -376,7 +370,18 @@ export class OAuthService implements IOAuthService {
         return null;
       }
 
-      return this.repo.loadTokenSet(BIGMODEL_PROVIDER_ID);
+      const tokenSet = await this.repo.loadTokenSet(BIGMODEL_PROVIDER_ID);
+      // token 读取可能长时间阻塞（慢 IO 或与登录/切换并发）；恢复后必须复核，
+      // hydra 移除互斥清空后 BigModel 槽位在切换后仍存活，不能把旧会话的
+      // token 继续交给后台迁移使用。
+      if (
+        this.oauthSessionGeneration !== expectedGeneration ||
+        (await this.repo.getActiveProvider()) !== BIGMODEL_PROVIDER_ID
+      ) {
+        log("restoreCachedSession skipped BigModel token migration after blocked token load");
+        return null;
+      }
+      return tokenSet;
     });
   }
 
@@ -423,30 +428,16 @@ export class OAuthService implements IOAuthService {
     profile: OAuthUserProfile,
     isStillCurrent?: () => boolean,
   ): Promise<void> {
-    const inactiveProvider = resolveInactiveOAuthProvider(provider);
     const previousTokenSet = await this.repo.loadTokenSet(provider);
     const previousProfile = await this.repo.loadUserProfile(provider);
-    const previousInactiveTokenSet = inactiveProvider
-      ? await this.repo.loadTokenSet(inactiveProvider)
-      : null;
-    const previousInactiveProfile = inactiveProvider
-      ? await this.repo.loadUserProfile(inactiveProvider)
-      : null;
-    const previousActiveProvider = await this.repo.getActiveProvider();
+    // hydra：回滚以指针 ref 为粒度（同 provider 多账号时仅恢复 provider 不够）
+    const previousActiveRef = await this.repo.getActiveAccountRef();
     const rollback = async () => {
       if (previousTokenSet) await this.repo.saveTokenSet(provider, previousTokenSet);
       else await this.repo.clearProvider(provider);
       if (previousProfile) await this.repo.saveUserProfile(provider, previousProfile);
       else await this.repo.clearUserProfile(provider);
-      if (inactiveProvider) {
-        if (previousInactiveTokenSet)
-          await this.repo.saveTokenSet(inactiveProvider, previousInactiveTokenSet);
-        else await this.repo.clearProvider(inactiveProvider);
-        if (previousInactiveProfile)
-          await this.repo.saveUserProfile(inactiveProvider, previousInactiveProfile);
-        else await this.repo.clearUserProfile(inactiveProvider);
-      }
-      if (previousActiveProvider) await this.repo.setActiveProvider(previousActiveProvider);
+      if (previousActiveRef) await this.repo.activateAccount(previousActiveRef);
       else await this.repo.setActiveProvider(null);
     };
     const assertCurrent = async () => {
@@ -456,18 +447,18 @@ export class OAuthService implements IOAuthService {
       }
     };
     this.oauthSessionGeneration += 1;
-    if (inactiveProvider) {
-      await assertCurrent();
-      // ZAI 与 BigModel 是互斥身份域。切换 provider 时必须先清旧 provider，
-      // 再保存当前 token；反序会让 clearProvider 误删共享的 zcodejwttoken。
-      await this.repo.clearProvider(inactiveProvider);
-    }
+    await assertCurrent();
+    // hydra：ZAI 与 BigModel 身份域不再互斥，另一 provider 的登录保留在各自的
+    // 镜像槽位与账号副本中。唯一跨域冲突是共享的 zcodejwttoken 槽位——写入新
+    // JWT 前先冻结当前活跃账号的 token，outgoing 账号切回时才能恢复。
+    await this.repo.freezeCurrentActiveTokens();
     await assertCurrent();
     await this.repo.saveTokenSet(provider, tokenSet);
     await assertCurrent();
     await this.repo.saveUserProfile(provider, withProviderProfileSchema(provider, profile));
     await assertCurrent();
-    await this.repo.setActiveProvider(provider);
+    // 激活本次登录对应的账号实例（同 provider 多账号时 provider 域激活不够精确）
+    await this.repo.activateAccount({ provider, accountId: deriveAccountId(profile) });
     if (isStillCurrent && !isStillCurrent()) {
       // active provider 写入无法被底层 credential IO 取消；失效 flow 不能仅按
       // provider 清理，否则同 provider 的新 flow 可能被旧 flow 误删。
@@ -1124,6 +1115,20 @@ export class OAuthService implements IOAuthService {
     });
     await this.cancelPending();
     await this.notifyProvidersLogout(providers, accountIdentities);
+  }
+
+  async listAccounts(): Promise<OAuthAccountSummary[]> {
+    return this.repo.listAccounts();
+  }
+
+  async switchAccount(provider: OAuthProviderId, accountId: string): Promise<void> {
+    await this.runSessionMutation(async () => {
+      // 世代推进让进行中的恢复/刷新任务按过期处理，与登出同级；
+      // 切换不触发 onProviderLogout——派生凭据按账号隔离保留，不得误删。
+      this.oauthSessionGeneration += 1;
+      await this.repo.switchToAccount({ provider, accountId });
+    });
+    await this.cancelPending();
   }
 
   async cancelPending(provider?: OAuthProviderId): Promise<void> {
