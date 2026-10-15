@@ -235,6 +235,52 @@ second-instance login handoff awaits a first live login (both Linux and Windows
 variants). Side benefit: `--own-deeplink` makes `--isolated` login workable
 (dev processes its own callback into its own data dir).
 
+## ADR-025: Port official 3.15.2/3.15.3 fixes without public source {2026-10-15; branch patch/3.15.3}
+
+Official released 3.15.2 (2026-10-13 03:19 UTC) and 3.15.3 (08:54 UTC) while the
+GitHub repo stayed at v3.15.1; build commit `d7ca8bee` (from shipped
+`out/metadata/build-meta.json`) does not exist upstream. Fix content confirmed
+from the CDN `latest.yml` release notes + installer disassembly (both win-x64
+installers SHA-512-verified against the manifest, NSIS payload carved, both
+340 MB app.asars extracted and hash-diffed: 27,856 files, four real changes).
+
+**Scope decision — port three of the four fixes, skip one.** Official's fix
+#4 (parallel-agent request failures) lives in `ClientRequestSigningV4Manager`
+inside the shipped `glm/zcode.cjs`. That class appears nowhere in this
+repository — the V4 request-signing module is part of the official CLI's
+closed-source layer and is absent from our local CLI build (`grep -c
+ClientRequestSigningV4 apps/zcode-cli/packages/cli/dist/zcode.cjs` = 0). The
+bug cannot occur in fork builds; nothing to port. Recorded so a future vendor
+pull with public 3.15.3 source doesn't re-litigate the gap. Also skipped: the
+official `error` handler second-argument routing (`Cannot check for updates:`)
+and the `BotsRepo` read-write-back change — neither is in the release notes
+nor fully reconstructible from minified code.
+
+**Ported (U54-U58, specs `.fork/spec-oauth-session-restore.md` +
+`.fork/spec-auto-update-install-state.md`):**
+1. Auth (official 3.15.2): business-endpoint recognition exact-list →
+   `/api/biz/` + `/api/pay/` prefix matching; 401/403/empty-body classification
+   with single-flight `getCustomerInfo` credential confirmation before any
+   session clear; session restore batch-reads JWT + provider access token,
+   either locally expired → `reauthentication-required`; corrupt-read CAS
+   retry. The release notes' repeated-onboarding and slow-network onboarding
+   fixes ride on this layer (`onboardingRecordService.loadUserId` reads the
+   OAuth profile) — no onboarding-specific code exists in the official diff.
+2. Update hang (official 3.15.3, "更新时应用无法正常退出"): install lifecycle
+   boolean → one-way `installPhase` state machine; all entries lock; prepare
+   failure / post-prepare target invalidation / install throw → `recovering`
+   relaunch via `requestAppRelaunch` (ADR-021 supervised form, replacing
+   official's raw `app.relaunch()`); download completion driven by the
+   `downloadUpdate()` promise with token accounting instead of the event
+   alone. This independently validates ADR-021's core conclusion — install is
+   terminal, never silently re-arm — while keeping our stronger supervised
+   relaunch.
+3. Version aligned to 3.15.3 (U58).
+
+**Evidence trail:** diff artifacts in `%TEMP%\zcode-diff`
+(`official-3153-diff-analysis` memory); every behavior change carries a
+修复依据 comment naming the official release.
+
 ## Standing user directives
 
 - **Fork-local maintenance**: upstream (zai-org/ZCode) is unlikely to accept this
