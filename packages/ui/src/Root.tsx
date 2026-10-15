@@ -1479,7 +1479,8 @@ function RootInner({
     onCreateTask: handleCreateTask,
     onOpenWorkspace: handleOpenWorkspace,
     allowOpenWorkspace,
-    onLogin: !user ? handleOpenLoginEntry : undefined,
+    // hydra：登录入口常驻——已登录时它是账号切换器的"添加账号"
+    onLogin: handleOpenLoginEntry,
     onLogout: user ? handleLogout : undefined,
     user,
   };
@@ -1618,7 +1619,8 @@ function RootInner({
                 allowRemoteWorkspace={allowRemoteWorkspace}
                 handleBackFromSettings={handleBackFromSettings}
                 handleLogout={user ? handleLogout : undefined}
-                onLogin={!user ? handleOpenLoginEntry : undefined}
+                // hydra：登录入口常驻——已登录时它是账号切换器的"添加账号"
+                onLogin={handleOpenLoginEntry}
                 user={user}
                 reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
                 remoteWorkspaceRecoveryByWorkspaceKey={remoteWorkspaceRecoveryByWorkspaceKey}

@@ -41,6 +41,8 @@ export async function handleOAuthCallbackSuccess(params: {
   setProviderFamilyDomain: (provider: OAuthProviderId) => Promise<void>;
   setUser: (user: UserInfo | null) => void;
   setOAuthError: (error: string | null) => void;
+  /** hydra：账号切换复用本刷新序列，遥测事件名与登录区分开 */
+  successTelemetryElementName?: string;
 }) {
   const loginProvider = resolveProviderTelemetryLabel(params.result.provider);
   params.setUser(params.result.userInfo);
@@ -92,7 +94,7 @@ export async function handleOAuthCallbackSuccess(params: {
     void reportAppTelemetryEvent(
       params.platform,
       {
-        elementName: "app_login_success",
+        elementName: params.successTelemetryElementName ?? "app_login_success",
         eventRegion: "app_profile",
         eventType: "view",
         eventExtraDetail: {
