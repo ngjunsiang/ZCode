@@ -1,8 +1,12 @@
 # hydra — research log
 
-Fork line: `hydra/*`, branched from upstream `main`. Branch name encodes the
-upstream version it tracks (e.g. `hydra/3.15.1` ↔ `main` @ `aac47556`, "feat:
-update to v3.15.1"), same convention as the `patch/*` fork line. Exploration
+Fork line: `hydra/*`, branched from upstream `main`. Parity branch is
+`hydra/patch/<upstream-version>` (e.g. `hydra/patch/3.15.1` ↔ `main` @
+`aac47556`, "feat: update to v3.15.1") — the `patch/<version>` suffix mirrors
+the `patch/*` daily-driver fork line's naming. Renamed from `hydra/3.15.1` on
+2026-10-15 (local-only, nothing pushed at rename time). Note: a bare `hydra`
+integration branch would re-conflict with the `hydra/*` namespace; if one is
+ever needed it must be named differently (e.g. `hydra/main`). Exploration
 happens in short-lived `hydra/exp/<n>-<topic>` branches off the parity branch,
 merged back with `--no-ff` so the merge graph itself reads as the research
 trace.
@@ -242,3 +246,11 @@ main warnings untouched); architecture clean; footer/i18n/account UI
 suites 79/79 (automationTerminologyI18n, marketingTouchProvider,
 accountConnection*, codingPlanUsagePanel, rewardsMenuIcon,
 settingsHelpMenuEntry, settingsPageIntegratedTerminalShell).
+
+### 2026-10-15 — branch convention: `hydra/patch/<version>`
+
+Parity branch renamed `hydra/3.15.1` → `hydra/patch/3.15.1` (user decision;
+mirrors the `patch/*` line naming). Local-only rename, worktree HEAD moved
+in place. Constraint reminder: no bare `hydra` branch can coexist with the
+`hydra/*` namespace — use `hydra/main` if an integration branch is ever
+needed.
