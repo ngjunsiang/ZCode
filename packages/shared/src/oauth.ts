@@ -58,6 +58,19 @@ export type OAuthProviderId =
   | typeof ZAI_PROVIDER_ID
   | (string & { readonly __oauthProviderBrand?: never });
 
+/** 一个登录实例的标识：provider 域 + 平台账号 id（与派生模型凭据的 accountIdentity 同源） */
+export interface OAuthAccountRef {
+  provider: OAuthProviderId;
+  accountId: string;
+}
+
+/** 注册表里的已知登录账号摘要（账号切换列表用） */
+export interface OAuthAccountSummary extends OAuthAccountRef {
+  username: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
 /** Provider 展示元信息 */
 export interface OAuthProviderMeta {
   id: OAuthProviderId;

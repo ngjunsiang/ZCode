@@ -1,5 +1,7 @@
 /* eslint-disable max-lines -- 账号注册表集中维护 oauth:account:* 与 legacy oauth:* 镜像 key 的一致性，拆分会让镜像语义扩散到多个模块。 */
 import type {
+  OAuthAccountRef,
+  OAuthAccountSummary,
   OAuthProviderId,
   OAuthTokenSet,
   OAuthUserProfile,
@@ -7,6 +9,9 @@ import type {
 import { BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID } from "@zcode/shared";
 import type { ICredentialService } from "../../credential/credential.js";
 import { createServiceLogger } from "../../logger/serviceLogger.js";
+
+/** 账号标识与摘要类型的契约在 shared 定义（UI 经 RPC 消费），此处转出便于 services 内引用。 */
+export type { OAuthAccountRef, OAuthAccountSummary };
 
 const log = createServiceLogger("oauthAccountStore");
 
@@ -33,19 +38,6 @@ export function legacyRefreshTokenKey(provider: OAuthProviderId): string {
 
 export function legacyUserInfoKey(provider: OAuthProviderId): string {
   return `oauth:${provider}:user_info`;
-}
-
-/** 一个登录实例的标识：provider 域 + 平台账号 id（与派生模型凭据的 accountIdentity 同源）。 */
-export interface OAuthAccountRef {
-  provider: OAuthProviderId;
-  accountId: string;
-}
-
-/** 注册表索引项：免解密 token 即可渲染账号列表的最小摘要。 */
-export interface OAuthAccountSummary extends OAuthAccountRef {
-  username: string;
-  displayName: string;
-  avatarUrl?: string;
 }
 
 export interface OAuthAccountMaterial {
@@ -486,8 +478,14 @@ export class OAuthAccountStore {
   /**
    * 激活某账号：写活跃指针并补全 legacy 镜像的指针/user_info 面。
    * token 面由调用方负责（登录流程先写镜像；切换流程先 unfreeze）。
+   * pending 指针可直接激活（回滚到未补全 profile 的遗留会话）。
    */
   async activateRef(ref: OAuthAccountRef): Promise<void> {
+    if (isPendingRef(ref)) {
+      await this.writeActivePointer(ref);
+      await this.credentialService.save(LEGACY_ACTIVE_PROVIDER_KEY, ref.provider);
+      return;
+    }
     const profile = await this.loadAccountProfile(ref);
     if (!profile) {
       log.warn(undefined, "activateRef: 注册表无此账号，忽略激活", { ...ref });
@@ -522,6 +520,57 @@ export class OAuthAccountStore {
     if (pointer) {
       await this.deleteLegacyProviderSlots(pointer.provider);
       await this.credentialService.delete(LEGACY_ACTIVE_PROVIDER_KEY);
+    }
+  }
+
+  /**
+   * 把当前活跃账号的镜像 token 冻结到其账号名下（无指针或 pending 时空操作）。
+   * persistOAuthSession 写入新 token/JWT 前调用：共享 zcodejwttoken 槽位会被
+   * 新登录覆盖，先冻结才能保住 outgoing 账号的 JWT。
+   */
+  async freezeCurrentActiveTokens(): Promise<void> {
+    const pointer = await this.readActivePointer();
+    if (!pointer || isPendingRef(pointer)) {
+      return;
+    }
+    await this.freezeMirrorTokensToRef(pointer);
+  }
+
+  /**
+   * 切换活跃账号（账号切换流的事务核心）。
+   *
+   * 事件顺序（由 OAuthService 会话队列串行化）：
+   *   1. 冻结 outgoing 同 provider 镜像 token 到其账号名下（保住共享 JWT）
+   *   2. activateRef：写指针 + active_provider + user_info 镜像
+   *   3. unfreeze incoming 冻结副本到镜像
+   *
+   * 同 provider 且 incoming 无冻结副本，说明其 token 已丢失（如同 provider 外部
+   * 登录覆盖），此时清空该 provider 镜像 token 槽位，让上层按"需重新登录"处理，
+   * 绝不把 outgoing 的 token 留给 incoming 误用。
+   */
+  async switchToAccount(target: OAuthAccountRef): Promise<void> {
+    const current = await this.readActivePointer();
+    if (current && sameRef(current, target)) {
+      return;
+    }
+    const profile = await this.loadAccountProfile(target);
+    if (!profile) {
+      throw new Error(`切换目标账号不存在：${target.provider}/${target.accountId}`);
+    }
+
+    const sameProviderSwitch = current !== null && current.provider === target.provider;
+    if (sameProviderSwitch && !isPendingRef(current)) {
+      await this.freezeMirrorTokensToRef(current);
+    }
+
+    await this.activateRef(target);
+    const restored = await this.unfreezeRefTokensToMirror(target);
+    if (sameProviderSwitch && !restored) {
+      await this.credentialService.delete(legacyAccessTokenKey(target.provider));
+      await this.credentialService.delete(legacyRefreshTokenKey(target.provider));
+      if (isZcodeJwtProvider(target.provider)) {
+        await this.credentialService.delete(LEGACY_ZCODE_JWT_KEY);
+      }
     }
   }
 
