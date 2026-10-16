@@ -942,6 +942,14 @@ async function dispatchResumeTurnRun(
       );
     }
   }
+  if (quotaAvailable === undefined) {
+    // U67（2026-10-16 事故）：无配额读数（服务缺失 / 预检失败 / not_configured 空快照——
+    // host 无参调用恒为最后一种）必须留痕；当时 4 次探测全部静默重臂到视界耗尽。
+    // 派发语义由 decideResumeTurnDispatch 裁决：undefined 照常派发，CLI guard 兜底。
+    logger.warn(
+      `resumeTurn 额度预检无配额数据（快照缺失或 not_configured），照常派发 automation=${request.automationId} runId=${request.runId}`,
+    );
+  }
   const decision = decideResumeTurnDispatch({
     trigger,
     scheduledAt,
