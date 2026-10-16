@@ -2601,6 +2601,9 @@ const enUS: Record<string, string> = {
   "settings.askUserQuestionAutoResolution": "Automatically continue questions",
   "settings.askUserQuestionAutoResolutionDescription":
     "When enabled, Agent questions automatically continue after 5 minutes without an answer. When disabled, current and future questions wait for your response.",
+  "settings.autoResume": "Auto-resume at quota reset",
+  "settings.autoResumeDescription":
+    "When a session is interrupted by a usage limit, automatically schedule it to resume at the reset time. Desktop app only; you can cancel each scheduled resume from the banner.",
   "settings.dynamicWorkflow": "Dynamic workflows",
   "settings.dynamicWorkflowDescription":
     "Let the model orchestrate many subagents working in parallel, so it can take on complex tasks and deliver polished results.",
