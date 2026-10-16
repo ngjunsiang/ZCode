@@ -705,3 +705,55 @@ patch/3.15.1).
 
 **Not contributed upstream.** Same intake situation as ADR-022; lives as fork
 patches U59–U65 / N16–N17 on `feature/auto-resume-default/3.15.1`.
+
+## ADR-027: Tray context-menu rebuild idempotence (Linux SNI stale-id click drop)  {2026-10-16}
+
+**Context.** Bug: tray menu items (notably Quit) intermittently do nothing
+while the main window is open; they work after the window is hidden to tray.
+Desktop logs show failed attempts never reach `markExplicitQuit` — the click
+handler never runs (first log line of `quitApp` is synchronous
+`appendFileSync`). Controlled reproduction against Electron 41.0.3 + KDE
+(DBusMenu injection into a throwaway tray app) established: (a) replacing a
+tray context menu via `setContextMenu` reassigns every DBusMenu item id
+(measured: the same item moved 1→4 after one rebuild) even though the revision
+bumps; (b) a click `Event` targeting a host-cached old id is dropped silently —
+no handler, no error, no app log; (c) a minimal app delivers clicks in all
+window states, during a 3s main-thread block (queued, delivered on unblock)
+and during renderer crash/reload storms — the drop requires the menu
+replacement itself. Upstream `rebuildMenu()` runs on every
+`browser-window-focus` (zoom-level menu refresh) and unconditionally calls
+`updateWindowsDesktopTrayMenu()`, so with the window open — including focus
+raised by tray interactions themselves (`showTrayWindow`,
+`ensurePrimaryWindow`) — the tray menu is rebuilt right around the user's
+click and plasmashell's cached ids go stale. Window hidden → no focus churn →
+ids stable → tray Quit works. Electron-side this matches the known
+`setContextMenu`/DBusMenu staleness class (electron#21499).
+
+**Decision.** Idempotence lives in the tray menu owner (`desktopTray.ts`), not
+in call-site discipline: `updateWindowsDesktopTrayMenu()` skips the rebuild
+when the menu's inputs — locale + product flavor — are unchanged (signature
+compare). First build at creation always runs; a locale change still rebuilds
+with localized labels/tooltip. Every caller, including future high-frequency
+ones, is then safe by construction. Windows inherits the guard (harmless —
+native menus have no DBusMenu ids — and avoids pointless Menu churn). Spec:
+docs/desktop/linux-close-to-tray.md「托盘上下文菜单重建幂等」.
+
+**Deliberately not built.** Removing the `browser-window-focus → rebuildMenu()`
+path (the application menu legitimately refreshes zoom state on focus; only
+the tray half was collateral damage); stable item ids across Electron menu
+replacement (electron/electron#21499 class — not actionable from app code);
+menu diffing API (none exists in Electron 41).
+
+**Verification.** N18 vitest 4/4 (mock electron: creation builds once; same
+input ×3 updates → no `setContextMenu`; locale change → rebuild with 「退出」
+label and idempotence re-established; pre-creation update no-op; darwin
+null). Adjacent suites green: desktopTray 2/2, desktopTraySupport +
+desktopWindowLifecycle 45/45 combined. typecheck 0 errors; lint 0 errors /
+64 baseline warnings (unchanged from ADR-026-era baseline);
+architecture:check --changed 0 violations. Runtime confirmation was done
+pre-fix via the DBusMenu injection harness (stale-id click dropped); a
+post-merge dogfood on the packaged build should confirm tray Quit works with
+the window open on KDE.
+
+**Not contributed upstream.** Same intake situation as ADR-022; lives as fork
+patches U66/N18 on `fix/tray-menu-stale-id-clicks` targeting patch/3.15.1.
