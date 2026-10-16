@@ -38,11 +38,15 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
    `resumeTask` (cold reactivation) → **skip** `applyCronRunConfigToExistingTask`
    → `sendHostCasCommandV4({ type: "resumeTurn", commandId: runId })`. CLI guards
    (`guard.resumeNotIdle/NoFailedTurn/NotQuotaFailed`) apply unchanged.
-4. **Entitlement pre-check before dispatch.** If the fresh snapshot still shows the
-   bucket exhausted: **re-arm** — if the snapshot carries a (new) `nextResetTime`,
-   move `retry_at` to that time (+margin) and follow the server if it shifts again;
-   otherwise re-arm in ~15 min steps. All transient retries (pre-check misses and
-   dispatch failures alike) are bounded by a horizon of
+4. **Entitlement pre-check before dispatch.** A quota-less snapshot — entitlement
+   service absent, refresh failure, or the success-shaped `not_configured` /
+   empty-limits snapshot — is **not** an exhausted reading: the dispatcher
+   proceeds with dispatch on both lanes (Run-now included) and lets the CLI
+   guards + model side arbitrate real exhaustion. Only a positive exhausted
+   reading (`quotaAvailable === false`) re-arms: if the snapshot carries a (new)
+   `nextResetTime`, move `retry_at` to that time (+margin) and follow the server
+   if it shifts again; otherwise re-arm in ~15 min steps. All transient retries
+   (pre-check misses and dispatch failures alike) are bounded by a horizon of
    `run.scheduledAt + 1 h`; past it the run is settled permanent-failed. Resume-kind
    is exempt from the 5-attempt `DISPATCH_MAX_ATTEMPTS` cap (the horizon replaces it).
    The 5-minute misfire grace is unchanged and inherited for first fires (boot
@@ -52,6 +56,14 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
    every re-arm longer than 5 minutes (2026-10-13 21:53 incident: both
    automations died `Ran 0 times` without dispatching). Late re-arm dispatches
    remain bounded by the horizon and re-validated by the CLI guard.
+   Quota-less readings are logged (warn) so wiring gaps stay visible.
+   *(2026-10-16 16:07–17:13 incident, U67/N19: the host's no-arg
+   `getEntitlementSnapshot()` call — still the only one in the repo — resolves to
+   `not_configured` because the `resolveApiAuthorization` fallback is wired
+   nowhere upstream or fork; all 4 schedule probes saw `undefined`, re-armed to
+   the horizon and aborted while quota was objectively available. The renderer's
+   pinned request (`quotaResumeEntitlementOptions`) saw the truth throughout.
+   Fix aligns the decision with this rule's contract: `undefined` dispatches.)*
 5. **Every terminal settlement deletes the automation** {Confirmed 2026-10-11}.
    - `resumeTurn` ACK accepted → "completed": automation row deleted.
      Run history rows are retained (repo delete never cascades) but the card is gone.
@@ -212,9 +224,10 @@ chip cancel ─▶ automationDelete + suppression record (rule 9)
 10. **No reset time / web-remote**: greyed+tooltip / button hidden.
 11. **Re-interruption**: after a successful auto-resume fails with a fresh quota
     error, the banner reappears and a new auto-resume can be scheduled.
-12. **Run now before reset**: card's run-now clicked while quota still exhausted →
-    pre-check fails → manual run recorded failed, schedule intact (it still fires
-    at the scheduled time).
+12. **Run now before reset**: card's run-now clicked while quota still exhausted
+    (positive `false` reading) → pre-check fails that manual run, schedule intact
+    (it still fires at the scheduled time). A quota-less reading dispatches
+    instead — see 18.
 13. **Default-on (rule 8)**: quota failure with known boundary, setting on →
     automation created without any click; banner shows the scheduled chip; the
     automation behaves exactly as scenario 1 onward.
@@ -228,6 +241,11 @@ chip cancel ─▶ automationDelete + suppression record (rule 9)
     button remains.
 17. **Reopen with existing schedule (rule 8 ordering guard)**: session reopened
     while a row is already scheduled → first list settles → no second create.
+18. **Quota-less pre-check (rule 4, U67)**: entitlement service absent, refresh
+    failure, or `not_configured` snapshot at fire time → dispatch proceeds on
+    both lanes; CLI guards arbitrate (e.g. session already resumed → obsolete
+    settle per rule 5). A warn is logged for the quota-less reading — the
+    2026-10-16 incident was invisible because it wasn't.
 
 ## Resolved (2026-10-11, via AskUserQuestion)
 
