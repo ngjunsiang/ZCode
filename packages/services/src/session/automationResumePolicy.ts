@@ -86,7 +86,9 @@ export function decideResumeTurnDispatch(input: {
   /** 本轮计划触发时刻（runId 内嵌）；manual run 为 null。 */
   scheduledAt: number | null;
   now: number;
-  /** 额度预检结果；undefined=快照缺失，视作未恢复（保守重臂）但不影响 manual 立即尝试。 */
+  /** 额度预检结果；undefined=无配额读数（服务缺失/预检失败/not_configured 空快照）⇒
+   * 不猜测、照常派发（「无快照不猜测」只约束 UI 展示，不约束派发尝试；resumeTurn 的
+   * CLI guard 与模型侧行为会兜住真正的耗尽）。 */
   quotaAvailable: boolean | undefined;
   /** 预检快照给出的下一个服务端重置时刻；无则空。 */
   freshResetAt?: number | null;
@@ -95,11 +97,15 @@ export function decideResumeTurnDispatch(input: {
 }): ResumeDispatchDecision {
   const horizonMs = input.horizonMs ?? RESUME_TURN_HORIZON_MS;
   const rearmStepMs = input.rearmStepMs ?? RESUME_TURN_REARM_STEP_MS;
-  // manual（设置页 run-now）语义是「现在就试」：失败只落该次 manual run，绝不顺延计划。
+  // manual（设置页 run-now）语义是「现在就试」：快照明确报耗尽（false）才落该次
+  // manual run 失败，绝不顺延计划；无配额读数（undefined）不猜测，照常派发。
   if (input.trigger === "manual") {
-    return input.quotaAvailable === true ? { kind: "dispatch" } : { kind: "permanent" };
+    return input.quotaAvailable === false ? { kind: "permanent" } : { kind: "dispatch" };
   }
-  if (input.quotaAvailable === true) return { kind: "dispatch" };
+  // 2026-10-16 事故（U67/N19）：host 无参 getEntitlementSnapshot() 恒得 not_configured
+  // 空快照，4 次调度探测全部重臂到视界耗尽，而额度实际已恢复——把 undefined 当作
+  // 「未恢复」重臂，等于把接线缺陷放大成功能失效。仅明确耗尽读数（false）才重臂。
+  if (input.quotaAvailable !== false) return { kind: "dispatch" };
   // 服务端给出了新的重置时刻 → 跟随服务器（即使超出视界；服务器改期即事实）。
   if (input.freshResetAt !== undefined && input.freshResetAt !== null && input.freshResetAt > input.now) {
     return { kind: "transient", retryAtMs: input.freshResetAt + RESUME_TURN_RESET_MARGIN_MS };
