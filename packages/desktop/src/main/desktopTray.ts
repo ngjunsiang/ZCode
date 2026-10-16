@@ -12,6 +12,17 @@ import {
 let desktopTray: Tray | null = null;
 let rebuildDesktopTrayContextMenu: (() => void) | null = null;
 
+// fork ADR-027：菜单输入签名（locale + flavor），用于 updateWindowsDesktopTrayMenu 幂等裁决。
+let desktopTrayLocaleGetter: (() => Locale) | null = null;
+let lastDesktopTrayMenuInputs: string | null = null;
+
+function resolveDesktopTrayMenuInputs(): string | null {
+  if (!desktopTrayLocaleGetter) {
+    return null;
+  }
+  return `${desktopTrayLocaleGetter()}|${ZCODE_PRODUCT_FLAVOR}`;
+}
+
 export function resolveDesktopTrayIconPath(platform: NodeJS.Platform = process.platform) {
   // Linux 托盘只接受 PNG（.ico 不会渲染）；打包态 icon.png 已由 extraResources 无条件放入
   // resources 目录（electron-builder.config.js），Windows 继续用独立托盘 .ico 避免高 DPI 模糊。
@@ -66,6 +77,7 @@ export function createDesktopTray(options: {
       });
   };
   const rebuildContextMenu = () => {
+    lastDesktopTrayMenuInputs = resolveDesktopTrayMenuInputs();
     desktopTray?.setToolTip(getLabel(desktopMenuMessageIds.trayTooltip));
     desktopTray?.setContextMenu(
       Menu.buildFromTemplate([
@@ -111,6 +123,7 @@ export function createDesktopTray(options: {
   };
 
   rebuildDesktopTrayContextMenu = rebuildContextMenu;
+  desktopTrayLocaleGetter = options.getLocale;
   desktopTray.on("click", showTrayWindow);
   desktopTray.on("double-click", showTrayWindow);
   rebuildContextMenu();
@@ -119,5 +132,14 @@ export function createDesktopTray(options: {
 }
 
 export function updateWindowsDesktopTrayMenu() {
+  // 2026-10-16 托盘退出失灵根因：rebuildMenu() 在每次 browser-window-focus 都会调用本函数，
+  // 无条件 setContextMenu 会让 Electron 为托盘菜单重新分配全部 DBusMenu 项 id；Linux SNI
+  // 宿主（KDE Plasma 等）缓存的旧 id 点击会被 Electron 静默丢弃——托盘 Quit 点击无效且应用
+  // 侧无任何日志。菜单内容只由 locale 与产品 flavor 决定（spec：
+  // docs/desktop/linux-close-to-tray.md「托盘上下文菜单重建幂等」），输入未变时跳过重建，
+  // 不替换 Menu 实例，高频重建路径因此安全。
+  if (resolveDesktopTrayMenuInputs() === lastDesktopTrayMenuInputs) {
+    return;
+  }
   rebuildDesktopTrayContextMenu?.();
 }

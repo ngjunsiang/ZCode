@@ -81,6 +81,18 @@ linux:  trayReady ∧ DBus 能力探测通过
 
 关窗分支与设置页能力查询(IPC)都读该合并结果,任一不满足按不可用走确认退出/置灰,杜绝"DBus 可用但 Tray 创建失败时隐藏即失联"。
 
+## 托盘上下文菜单重建幂等(2026-10-16)
+
+托盘右键菜单的重建必须**幂等**:菜单内容只由 locale 与产品 flavor(`ZCODE_PRODUCT_FLAVOR`)决定,输入未变时不得替换 `Menu` 实例(不调用 `setContextMenu`)。
+
+依据(bug 2026-10-16,ADR-027):Linux SNI/DBusMenu 托盘宿主(KDE Plasma 等)按**菜单项 id** 派发激活事件;Electron 每次替换托盘上下文菜单都会为所有项重新分配 id,宿主缓存的旧 id 点击会被 Electron 静默丢弃(无 handler、无日志)。上游 `rebuildMenu()` 在每次 `browser-window-focus`(含托盘 `showCurrentWindow`/`ensurePrimaryWindow` 引发的聚焦)都会调用 `updateWindowsDesktopTrayMenu()`,若重建不幂等,窗口打开期间托盘菜单项(含"退出")会以高概率命中陈旧 id 而失效;窗口隐藏时无聚焦事件扰动,菜单稳定,故表现为"关窗后托盘退出才有效"。
+
+约束:
+
+- `createDesktopTray` 创建时的首次构建不受影响;locale 变化后下一次 `updateWindowsDesktopTrayMenu()` 必须真正重建(标签/tooltip 跟随语言)。
+- 幂等裁决放在 desktopTray 模块内部(菜单 owner),所有调用方(含未来新增的高频重建路径)自动安全,不依赖调用方自律。
+- Windows 原生菜单无 DBusMenu id 语义,但同样受益(避免无意义的 Menu 实例重建)。
+
 ## 关窗路径
 
 `handleDesktopWindowCloseRequest` 的隐藏分支条件泛化:
@@ -163,3 +175,4 @@ SettingsPage(置灰判断;Web/远控无桥不实现,设置项本就仅桌面显�
 - 关窗分支:linux + supported/unsupported × 设置开/关 的矩阵单测(现有 `desktopWindowLifecycle.test.ts` 增补)
 - Linux 默认值归位:纯函数抽取后单测(未初始化强制 false;已初始化尊重显式值;非 Linux 不动)
 - monitor:缓存刷新、stale 语义
+- 托盘菜单幂等:同输入(locale+flavor)重复 `updateWindowsDesktopTrayMenu()` 不再 `setContextMenu`;locale 变化后重建且标签跟随语言(`desktopTray` 单测,electron mock)
