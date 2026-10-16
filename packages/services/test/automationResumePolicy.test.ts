@@ -77,18 +77,30 @@ describe("decideResumeTurnDispatch", () => {
     ).toEqual({ kind: "permanent" });
   });
 
-  it("快照缺失（quotaAvailable=undefined）按未恢复重臂，不直接放弃", () => {
+  it("无配额读数（undefined）不猜测：照常派发，由 CLI guard 兜底（U67 事故语义）", () => {
     expect(
       decideResumeTurnDispatch({
         trigger: "schedule",
         scheduledAt: SCHEDULED_AT,
         now: NOW,
         quotaAvailable: undefined,
-      }).kind,
-    ).toBe("transient");
+      }),
+    ).toEqual({ kind: "dispatch" });
   });
 
-  it("manual 语义：额度恢复才派发；未恢复直接失败，绝不顺延计划", () => {
+  it("无配额读数时即使快照带未来重置时刻也直接派发（不知道耗尽就先试）", () => {
+    expect(
+      decideResumeTurnDispatch({
+        trigger: "schedule",
+        scheduledAt: SCHEDULED_AT,
+        now: NOW,
+        quotaAvailable: undefined,
+        freshResetAt: NOW + 30 * MINUTE,
+      }),
+    ).toEqual({ kind: "dispatch" });
+  });
+
+  it("manual 语义：明确耗尽才失败该次 run；无配额读数不猜测、照常派发，绝不顺延计划", () => {
     expect(
       decideResumeTurnDispatch({
         trigger: "manual",
@@ -112,7 +124,7 @@ describe("decideResumeTurnDispatch", () => {
         now: NOW,
         quotaAvailable: undefined,
       }),
-    ).toEqual({ kind: "permanent" });
+    ).toEqual({ kind: "dispatch" });
   });
 });
 
@@ -146,6 +158,20 @@ describe("isEntitlementQuotaAvailable / nextEntitlementResetAt", () => {
 
   it("无桶（no_plan/拉取失败）⇒ undefined（不猜测）", () => {
     expect(isEntitlementQuotaAvailable(makeSnapshot([]))).toBeUndefined();
+  });
+
+  it("not_configured 空快照（quota:null；host 无参调用的事故形状，U67）⇒ undefined 且无边界", () => {
+    const notConfigured = {
+      generatedAt: NOW,
+      authenticated: true,
+      unavailableReason: "not_configured",
+      provider: null,
+      remaining: null,
+      subscription: null,
+      quota: null,
+    } as UsageEntitlementSnapshot;
+    expect(isEntitlementQuotaAvailable(notConfigured)).toBeUndefined();
+    expect(nextEntitlementResetAt(notConfigured)).toBeNull();
   });
 
   it("nextEntitlementResetAt 取未来最早边界；服务端时间优先于本地 generatedAt", () => {
