@@ -2803,6 +2803,31 @@ export class ConversationV4Gateway {
     return this.publishers.get(sessionId)?.getSnapshot().control ?? null;
   }
 
+  /**
+   * Fork resumeTurn on-demand hydration fallback (ADR-029, gate G4 — see
+   * .fork/spec-auto-resume-mechanism.md): build the same projection a renderer
+   * subscribe would, then return the same narrow control face as
+   * getConversationControl. The ADR-028 host dispatch resumes and commands
+   * sessions with no renderer mounted; a publisher created without hydration
+   * reports phase "draft", so both guard fact sources (core projection +
+   * snapshot control) were empty for unmounted sessions and every scheduled
+   * resume was rejected guard.resumeNoFailedTurn despite the persisted
+   * transcript still ending in the quota failure. Same construction as
+   * rowsRange: ready-flight reuse, cold-ready for non-live sessions, hydration
+   * for live-but-unhydrated publishers.
+   */
+  async ensureHydratedConversationControl(
+    sessionId: string,
+  ): Promise<ConversationSnapshot["control"] | null> {
+    const existingReady = this.readyFlights.get(sessionId);
+    const publisher = existingReady
+      ? await existingReady
+      : !this.hasLiveConversation(sessionId)
+        ? await this.ensureColdReadyPublisher(sessionId)
+        : await this.hydratePublisher(sessionId);
+    return publisher.getSnapshot().control;
+  }
+
   getSessionFollowupMode(sessionId: string): "queue" | "guide" | null {
     return this.publishers.get(sessionId)?.getSnapshot().config.followupMode ?? null;
   }
