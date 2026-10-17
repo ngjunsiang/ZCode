@@ -1,7 +1,10 @@
 # Spec: Auto-Resume at quota reset (`action: "resumeTurn"` automations)
 
 Status: approved (2026-10-11 — all clarifications answered; see Resolved at bottom);
-**amended 2026-10-16 — default-on auto-scheduling (rules 8–11, scenarios 13–17; ADR-026)**.
+**amended 2026-10-16 — default-on auto-scheduling (rules 8–11, scenarios 13–17; ADR-026)**;
+**amended 2026-10-17 — rule-8 auto-scheduling moves host-side, event-driven (rules 4/8–11
+revised, scenarios 13–17 rewritten + 19–20; ADR-028; second live failure 2026-10-17 —
+renderer-mounted detection structurally misses scheduler-job and web-remote-driven sessions)**.
 Owner: fork-local.
 Follows AGENTS.md spec-first rule. Extends `spec-resume-turn.md` (the Resume button)
 onto the automations feature (`automation-types.ts`, scheduler, host dispatch).
@@ -57,6 +60,13 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
    automations died `Ran 0 times` without dispatching). Late re-arm dispatches
    remain bounded by the horizon and re-validated by the CLI guard.
    Quota-less readings are logged (warn) so wiring gaps stay visible.
+   **Fire-time pre-check is pinned (ADR-028, 2026-10-17):** the host derives the
+   same request the renderer pins (`preferredProviderId` from the bound
+   session's model + registry account access + `requirePreferredProvider` +
+   `allowEnvApiKey:false`), so exhausted readings carry a real
+   `nextResetTime` to follow and quota-less readings are rare wiring gaps
+   rather than the guaranteed `not_configured` of the old no-arg call
+   (2026-10-16 incident, U67/N19 — whose dispatch semantics are unchanged).
    *(2026-10-16 16:07–17:13 incident, U67/N19: the host's no-arg
    `getEntitlementSnapshot()` call — still the only one in the repo — resolves to
    `not_configured` because the `resolveApiAuthorization` fallback is wired
@@ -91,45 +101,58 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
      resume-kind cards (dispatch ignores both).
    - Button/chip reset-time rendering is locale-aware via the existing
      `formatQuotaResetTime` conventions (en "Oct 12, 15:05" / zh "10月12日 15:05").
-8. **Default-on auto-scheduling (ADR-026, 2026-10-16).** New app setting
-   `autoResumeEnabled` (`AppSettings`, Zod `.default(true)`; Settings → General row,
-   sibling of `askUserQuestionAutoResolution`). When ALL hold — quota detection hit
-   (rule 1 banner in place), `nextResetAt !== null`, the initial automation-list
-   refresh has settled and shows no scheduled row for the session, no suppression
-   for the boundary (rule 9), setting on, and the previous auto-attempt for this
-   boundary hasn't failed (rule 10) — the renderer auto-creates **exactly the
-   automation rule 2's click creates** (same params, same dedup, same cap-error
-   toast). Rule 2's button remains the manual path (also the only path while
-   suppressed / setting off / boundary unknown); after an auto-create the banner
-   simply shows the scheduled chip. Ordering guard: the auto-effect waits for the
-   first `listAllAutomations` to settle, so reopening a session with an existing
-   schedule does not double-create. Multi-window double-create (both windows
-   refreshed before either creates) remains possible and self-heals at fire time
-   (stale-exhausted CAS → obsolete settlement deletes the loser, rule 5).
-9. **Cancel = per-failure suppression (user decision 2026-10-16).** Clicking the
-   scheduled chip's cancel deletes the row (rule 6 unchanged) AND records
-   `sessionId → expiresAt = max(nextResetAt at cancel time, now)` in a
-   renderer-local persisted store (`autoResumeSuppressionStore`, localStorage via
-   the `startPlanQuotaReminderStore` pattern: prefix + injectable Storage +
-   prune-on-read; shared across windows of the same profile, never synced, not
-   server fact). While unexpired, the auto-effect must not re-create for that
-   session — including after app restart (that is why it persists). The manual
-   button ignores suppression (explicit click always schedules). Accepted edge:
-   the key is the *recorded* boundary, not a failure identity (none is available
-   renderer-side); if the server shifts the boundary past the recorded expiry
-   during the same failure, auto-scheduling resumes for the new boundary
-   (follow-the-server matches rule 4's re-arm philosophy).
-10. **One auto-attempt per boundary per mount.** A failed auto-create (cap,
-    RPC error) surfaces the existing toast and is NOT retried on a loop; an
-    in-renderer ref remembers the attempted boundary so the effect fires at most
-    once per (session, boundary) per renderer mount. Failure memory is NOT
-    persisted (unlike rule 9's cancel suppression) — restart retries once. The
-    manual button still retries freely.
+8. **Default-on auto-scheduling is host-side and event-driven (ADR-028,
+   2026-10-17; supersedes the ADR-026 renderer auto-effect).** Setting
+   `autoResumeEnabled` (`AppSettings`, Zod `.default(true)`; Settings → General
+   row) gates NEW auto-scheduling only. The host-side detector subscribes to the
+   task-index syncer's session **terminal transition** event (a true
+   non-terminal → terminal diff — restarts never replay it) and, when ALL hold —
+   the transition is `turn.failed`, the session snapshot's `projection.lastError`
+   is quota-classified (same code family as the CLI guard), the setting is on
+   (read at failure time; read failure defaults on), and no active/paused
+   `resumeTurn` row exists for the session (enforced atomically by
+   `AutomationRepo.create`, see Interface) — it calls the EXISTING
+   `automationService.create` with exactly rule 2's parameters (one-shot,
+   bound, margin). This covers every session whose agent runs in this host
+   process: desktop panes, **scheduler-dispatched job sessions (never mounted)
+   and phone/web-remote-driven sessions** — the two classes the renderer
+   auto-effect structurally missed (2026-10-17 live failure). The schedule
+   boundary comes from a host-side **pinned entitlement fetch** (renderer-parity
+   request; earliest future bucket via `nextEntitlementResetAt`); a quota-less
+   or failed fetch does NOT cancel auto-scheduling — it falls back to a
+   probe-able schedule at ~15 min and lets fire-time machinery (rule 4: pinned
+   pre-check, follow-the-server re-arm, horizon) converge. Auto-create failures
+   (cap, RPC error) log warn host-side — there is no owning renderer to toast —
+   and are not retried on a loop; the next failure event is the only re-trigger.
+   The renderer keeps rule 2's manual button (the only path while setting off or
+   boundary unknown to the user) and shows the scheduled chip for host-created
+   rows via its list polling (Interface).
+9. **Cancel = per-failure opt-out, structurally (ADR-028).** Clicking the
+   scheduled chip's cancel deletes the row (rule 6 unchanged). No suppression
+   record is needed any more: auto-scheduling is triggered by a terminal
+   *transition*, and cancelling produces no new transition — the cancelled
+   failure never re-creates, including across app restarts (the syncer does not
+   replay terminal events for sessions restored into its baseline). A NEW quota
+   failure in the same session (a fresh transition) schedules again — cancel
+   opts out of *that* failure only, matching the previous per-failure intent.
+   The ADR-026 renderer suppression store (`autoResumeSuppressionStore`) is
+   removed; stale localStorage entries from older builds are ignored.
+10. **One auto-attempt per failure event.** The detector creates at most one
+    row per terminal transition; the repo-level active-target guard makes
+    concurrent observers (multi-window hosts, racing manual clicks) idempotent
+    — a duplicate create returns the existing row instead of inserting a
+    second one. This closes the multi-window double-create window ADR-026
+    tolerated (which self-healed at fire time via stale-CAS obsolete
+    settlement); that fire-time self-heal remains as the safety net. Create
+    failure memory is not persisted — a restart or a later failure event
+    retries naturally, and the manual button always retries freely.
 11. **Setting scope.** `autoResumeEnabled` off stops NEW auto-scheduling only;
     already-scheduled automations keep their contract (fire, settle, delete per
-    rules 3–5). The General-page row renders on all platforms; its effect is
-    desktop-only in practice (web-remote has no automation RPC — the hook hides
-    there already, rule 1).
+    rules 3–5). The host reads the setting at failure time (no cache), so
+    toggling takes effect on the next failure. The General-page row renders on
+    all platforms; its effect follows the host that runs the session (local
+    desktop host in practice — web-remote renderers have no automation RPC,
+    rule 1, but their sessions now inherit host-side scheduling).
 
 ## Event order (owners)
 
@@ -150,9 +173,10 @@ click → automationCreate ─────────────────�
                              └ guard-rejected/stale ─ settlement:"obsolete" ─────────────▶ skipped run + DELETE row
 manual Resume success ─▶ automationDelete(bound id)
 archive/delete session ─▶ deleteResumeAutomationForTask (resume-kind only)
-quota banner + boundary known + setting on + first list settled + no row + not suppressed
-                      ─▶ useAutoResume auto-effect: automationCreate (identical to click, rule 8)
-chip cancel ─▶ automationDelete + suppression record (rule 9)
+CLI turn fails quota-classified ─▶ syncer terminal diff (turn.failed) ─▶ host detector (rule 8):
+   setting on + snapshot.lastError quota-classified + pinned entitlement boundary
+   ─▶ automationService.create (identical params to click; repo-active-target guard idempotent)
+chip cancel ─▶ automationDelete (no suppression record — no new transition, no re-create; rule 9)
 ```
 
 ## State owners
@@ -160,13 +184,14 @@ chip cancel ─▶ automationDelete + suppression record (rule 9)
 | Fact | Owner | Notes |
 | --- | --- | --- |
 | Automation row, run rows, re-arm targets (`retry_at`) | scheduler + `AutomationRepo` (tasks-index sqlite) | host/renderer never write these directly |
-| Dispatch execution, entitlement pre-check, settlement intent | host (`dispatchCronRun`) | reports `settlement`/`retryAtMs`; scheduler applies |
+| Dispatch execution, entitlement pre-check (pinned), settlement intent | host (`dispatchCronRun`) | reports `settlement`/`retryAtMs`; scheduler applies |
 | Turn continuation, guards | CLI (unchanged from resume-turn) | CAS via `sendHostCasCommandV4` |
 | Button visibility/scheduled chip | renderer (derived from projection + entitlement + automation list) | zero new persisted renderer state |
-| Reset time (`nextResetTime`) | server entitlement snapshot | renderer formats; host re-checks at fire time |
+| **Auto-scheduling trigger (failure → create)** | **host-side detector** (`autoResumeHostScheduler`, services, wired per `createLocalServices`) | terminal-transition event + quota classification + pinned boundary; single write path via `automationService.create` |
+| **One-row-per-target invariant** | `AutomationRepo.create` (inside its `BEGIN IMMEDIATE` cap transaction) | active/paused `resumeTurn` row for the same target+workspace ⇒ return existing, never insert a duplicate |
+| Reset time (`nextResetTime`) | server entitlement snapshot | renderer formats; host pins the request and re-checks at fire time |
 | Session archive/delete | `zcodeTaskServiceAdapter` | emits cleanup of resume-kind automation |
-| Cancel suppression (`sessionId → expiresAt`) | `autoResumeSuppressionStore` (renderer localStorage, N16) | rule 9: survives restart, never synced, pruned at expiry |
-| Auto-attempt memory (boundary → tried) | in-renderer refs inside `useAutoResume` | rule 10: per-mount only, not persisted |
+| `autoResumeEnabled` | `AppSettings` via `ISettingService` (shared host authority) | read at failure time by the detector; renderer toggle unchanged |
 
 ## Interface
 
@@ -191,11 +216,32 @@ chip cancel ─▶ automationDelete + suppression record (rule 9)
 - **Renderer**: fork-new `useAutoResume` hook (create/cancel/scheduled-state);
   re-arm/horizon decision as pure function `automationResumePolicy` (services) so
   it is unit-testable; SessionPane wiring stays one hook call + one cancel call +
-  prop pass (U8 lesson). **v2 (ADR-026):** hook gains `autoEnabled` param
-  (SessionPane passes `sharedSettings?.autoResumeEnabled !== false`); new
-  fork-new `autoResumeSuppressionStore` (renderer localStorage, N16) owns rule-9
-  suppression; `AppSettings.autoResumeEnabled?: boolean` (Zod default true, U59/
-  U60) with a Settings → General row (U61–U64).
+  prop pass (U8 lesson). **v2 (ADR-026):** `AppSettings.autoResumeEnabled?:
+  boolean` (Zod default true, U59/U60) with a Settings → General row (U61–U64);
+  hook gained `autoEnabled` + suppression store. **v3 (ADR-028):** the hook sheds
+  the auto-effect entirely (no `autoEnabled` param, no suppression store, no
+  per-mount attempt refs) and keeps only the manual pair (schedule button +
+  scheduled chip/cancel + cancel-on-manual-resume); while a quota banner is up it
+  polls `listAllAutomations` slowly (~30 s) so host-created rows surface the chip
+  and fired rows clear it without a remount.
+- **Host detector (ADR-028)**: fork-new `autoResumeHostScheduler` (services,
+  wired by `createLocalServices` beside the syncer): subscribes
+  `taskIndexSyncer.onSessionTerminalEvent`; on `turn.failed` reads the session
+  snapshot (`readSession`, existing-only/index profile), classifies
+  `projection.lastError` against the quota code family, resolves the pinned
+  entitlement request (session model's `providerId` + registry static account
+  access — mirrors the renderer's `buildQuotaResumeEntitlementOptions` minus
+  hook concerns), computes the boundary via `nextEntitlementResetAt` and creates
+  rule 2's automation through `automationService.create`. Probe fallback at
+  `RESUME_TURN_REARM_STEP_MS` when the boundary is unknown. One shared pure
+  helper module supplies classification + request building so the desktop
+  fire-time pre-check pins identically.
+- **Repo guard (ADR-028)**: `AutomationRepo.create` — for `action="resumeTurn"`
+  inserts, an existing active/paused row with the same `(workspace_key,
+  target_task_id)` makes create return that row instead of inserting, checked
+  inside the existing `BEGIN IMMEDIATE` transaction (atomic against the 20-cap
+  check; safe across host processes only because all writers go through the same
+  tasks-index sqlite).
 
 ## Acceptance scenarios
 
@@ -228,24 +274,44 @@ chip cancel ─▶ automationDelete + suppression record (rule 9)
     (positive `false` reading) → pre-check fails that manual run, schedule intact
     (it still fires at the scheduled time). A quota-less reading dispatches
     instead — see 18.
-13. **Default-on (rule 8)**: quota failure with known boundary, setting on →
-    automation created without any click; banner shows the scheduled chip; the
-    automation behaves exactly as scenario 1 onward.
-14. **Cancel suppression (rule 9)**: chip cancel → row deleted + suppression
-    recorded; the auto-effect does not re-create (same mount and after renderer
-    restart); clicking the schedule button still creates one.
-15. **Setting off (rule 11)**: no auto-create; the manual button pair works as
-    v1; a schedule created earlier still fires and settles normally.
-16. **Auto-create failure (rule 10)**: cap/RPC error → the existing toast once;
-    no retry loop until the boundary changes or a remount happens; the manual
-    button remains.
-17. **Reopen with existing schedule (rule 8 ordering guard)**: session reopened
-    while a row is already scheduled → first list settles → no second create.
+13. **Default-on, host-side (rule 8)**: quota failure with known boundary,
+   setting on → automation created by the host detector without any click and
+   without any pane mounted — including a scheduler-dispatched job session
+   (never mounted) and a phone/web-remote-driven session; the automation
+   behaves exactly as scenario 1 onward; a desktop pane open on the session
+   shows the scheduled chip via polling.
+14. **Cancel is per-failure (rule 9)**: chip cancel → row deleted; no
+   re-create for that failure (no new transition), including after app
+   restart (terminal transitions never replay); clicking the schedule button
+   still creates one; a NEW quota failure schedules again.
+15. **Setting off (rule 11)**: no auto-create at failure time; the manual
+   button pair works as v1; a schedule created earlier still fires and
+   settles normally; flipping the toggle back on affects the next failure.
+16. **Auto-create failure (rule 10)**: cap/RPC error at failure time →
+   host-side warn, no retry loop (the failure event is the only trigger);
+   the manual button remains and toasts on its own failures.
+17. **Restart with existing schedule (rule 10)**: app restarted while a row is
+   scheduled → syncer baseline hydration does not replay the failure → no
+   second create (and the repo guard would return the existing row anyway);
+   the row fires at its boundary. A crash between failure and create loses
+   only that window — the manual button remains.
 18. **Quota-less pre-check (rule 4, U67)**: entitlement service absent, refresh
-    failure, or `not_configured` snapshot at fire time → dispatch proceeds on
-    both lanes; CLI guards arbitrate (e.g. session already resumed → obsolete
-    settle per rule 5). A warn is logged for the quota-less reading — the
-    2026-10-16 incident was invisible because it wasn't.
+   failure, or a genuinely `not_configured` snapshot at fire time → dispatch
+   proceeds on both lanes; CLI guards arbitrate (e.g. session already resumed
+   → obsolete settle per rule 5). A warn is logged for the quota-less reading
+   — the 2026-10-16 incident was invisible because it wasn't. With the pinned
+   pre-check (ADR-028) this is a rare wiring gap, not the default reading.
+19. **Unknown boundary at failure (rule 8 fallback)**: pinned fetch quota-less
+   or failed at failure time → auto-create still happens, scheduled ~15 min
+   out; at fire the pinned pre-check either follows a real server boundary
+   (re-arm) or dispatches (quota-less, rule 4). If the resumed turn fails
+   quota-classified again, the new failure event schedules the next probe —
+   bounded ~15-min retry cadence that stops the moment quota recovers or the
+   failure stops being quota-classified.
+20. **Multi-window / racing creates (rule 10)**: two window hosts (or a host
+   detector racing a manual click) create for the same session concurrently →
+   the repo active-target guard returns the same single row; no duplicate
+   schedule, no fire-time duel.
 
 ## Resolved (2026-10-11, via AskUserQuestion)
 
@@ -258,7 +324,12 @@ chip cancel ─▶ automationDelete + suppression record (rule 9)
 ## Out of scope (v1)
 
 - Bot delivery, toasts/notifications on firing (unread marking is inherited).
-- Phone/web-remote UI; catch-up beyond the 5-min grace; catch-up on boot.
+- Phone/web-remote UI (rendering; phone-**driven** sessions ARE scheduled by the
+  host detector since ADR-028 — they execute on the desktop host); catch-up
+  beyond the 5-min grace; catch-up on boot.
+- Agent runtimes with no attached host running this fork's service collection
+  (`createLocalServices` is the only detection wiring; ADR-028), e.g. a bare
+  CLI. dwf/remote-machine sessions get detection wherever their agent runs.
 - Editing cron/prompt of resume-kind cards (pending Q3); multiple pending
   auto-resumes per session (exactly one).
 - Cleanup of prompt-kind bindings on session delete (upstream behavior unchanged).
