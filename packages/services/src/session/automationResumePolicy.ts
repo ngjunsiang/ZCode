@@ -15,6 +15,48 @@ export const RESUME_TURN_REARM_STEP_MS = 15 * 60 * 1000;
 /** 服务器重置时刻的安全余量：到点后仍留 1 分钟，吸收秒级时钟偏差。 */
 export const RESUME_TURN_RESET_MARGIN_MS = 60_000;
 
+// fork ADR-028：配额耗尽业务码词表（host 侧自动调度检测用）。与 CLI 守卫
+// （bootstrap handlers/resume-turn.ts QUOTA_RESUME_PROVIDER_CODES）和 UI 检测
+// （sessionQuotaResumeState QUOTA_RESUME_BUSINESS_CODES）同源，三侧独立维护：
+// CLI 读 core projection，UI 读 v4 snapshot，这里读 SessionStateSnapshot.projection。
+// 并发上限 3008–3010 明确排除（分钟级自愈，ADR-005）。
+const QUOTA_RESUME_PROVIDER_CODES: ReadonlySet<string> = new Set([
+  "1005",
+  "1308",
+  "1309",
+  "1310",
+  "1311",
+  "1313",
+  "1314",
+  "1315",
+  "1316",
+  "1317",
+  "1318",
+  "1319",
+  "1320",
+  "1321",
+  "insufficient_quota",
+  "credit_balance_exhausted",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+  "exceeded_current_quota_error",
+  "2056",
+  "20097",
+]);
+
+/**
+ * fork ADR-028：失败终态是否属于配额耗尽族——host 侧自动调度的触发谓词。
+ * code 缺失/被包装时回退 attribution.providerErrorCode（与 CLI 守卫同一回退语义）。
+ */
+export function isQuotaClassifiedResumeError(lastError: {
+  code?: string;
+  attribution?: { providerErrorCode?: string };
+}): boolean {
+  const candidates = [lastError.code, lastError.attribution?.providerErrorCode];
+  return candidates.some((code) => code !== undefined && QUOTA_RESUME_PROVIDER_CODES.has(code));
+}
+
 function finite(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
