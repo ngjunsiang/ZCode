@@ -818,16 +818,25 @@ agents running on remote machines from THIS desktop (detection rides
 `createLocalServices` wherever the agent actually runs; remote-machine hosts
 running this fork get it via their own wiring).
 
-**Verification.** Planned: services vitest matrix for the detector (non-quota
-error no-create / quota+boundary create / quota-less probe fallback / setting
-off / idempotent duplicate / readSession failure / create failure warn),
-repo idempotency extension in the automation action suite, pinned-request
-helper matrix, rewritten N17 renderer suite (manual-only + polling), full
-affected suites, `pnpm typecheck` + `pnpm lint` +
-`pnpm architecture:check --changed` — real results recorded in PATCHES rows at
-flip time. Desktop dogfood: the next natural quota exhaustion exercises
-end-to-end scheduling (row created with no pane mounted; log signatures in the
-tasks-index + app log).
+**Verification (real results, 2026-10-17).** Root `pnpm typecheck` 0 errors
+(one iteration: detector create params needed the service-level
+`recurring:false`); `pnpm lint` 0 errors / 64 warnings = unchanged baseline
+(one iteration: useless spread in the new test); `pnpm
+architecture:check --changed` 0 violations. Services vitest:
+autoResumeHostScheduler 18/18 (detector matrix: boundary create with +1-min
+margin / probe fallback on pin failure + no-provider / setting off + read
+default-on / readSession failure / create failure no-retry / in-flight
+serialization / post-dispose inert; repo idempotency incl. terminal-row
+re-create + prompt-action isolation; pin resolver branches), policy suite
+extended with the classifier matrix (22/22 with the action suite combined);
+adjacent suites green: tasksStartupPreparation + tasksDatabaseMigration +
+terminalOutputReplay 22/22. UI vitest: useAutoResume 10/10 (manual-only
+matrix, no-auto-create regression, slow-poll fake-timers coverage); adjacent
+quota suites (sessionQuotaResumeState / quotaResumeEntitlementOptions /
+quotaBannerErrorClassification) 26/26. Desktop dogfood pending: the next
+natural quota exhaustion exercises end-to-end scheduling with no pane mounted
+(log signature `automation.resume.auto_scheduled` in the host log + a
+resumeTurn row in tasks-index).
 
 **Not contributed upstream.** Same intake situation as ADR-022; lives as fork
 patches U68–U71 / N20–N21 (+ N6/N17 amended, N16 removed) on
