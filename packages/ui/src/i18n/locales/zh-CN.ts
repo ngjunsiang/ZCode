@@ -2448,7 +2448,7 @@ const zhCN: Record<string, string> = {
     "开启后，Agent 提问 5 分钟未回答会自动继续；关闭后，当前和后续提问会一直等待你的回答。",
   "settings.autoResume": "配额重置时自动恢复",
   "settings.autoResumeDescription":
-    "会话因用量配额中断时，自动在重置时刻调度恢复。仅桌面端生效；可在横幅上取消已调度的恢复。",
+    "会话因用量配额中断时，桌面端后台会在重置时刻自动调度恢复。可在横幅上取消已调度的恢复。",
   "settings.dynamicWorkflow": "动态工作流",
   "settings.dynamicWorkflowDescription":
     "让模型用脚本编排大量子代理并行工作，处理复杂任务、交付专业结果。",

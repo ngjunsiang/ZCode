@@ -4786,7 +4786,8 @@ export function SessionPane({
     },
   });
   // fork Auto-Resume：调度/取消/已调度派生；automation RPC 不可用（web-remote）时整体为 null。
-  // ADR-026 规则 8：设置开（缺省 true）⇒ 满足条件时自动调度，无需点击。
+  // ADR-028：规则 8 自动调度已移 host 侧（autoResumeHostScheduler）——这里只保留手动
+  // 按钮/chip 与慢轮询；sharedSettings.autoResumeEnabled 由 host 在失败时刻读取。
   const autoResume = useAutoResume({
     sessionId: snapshot?.sessionId ?? sessionId,
     sessionTitle: snapshot?.meta.title?.trim() ?? null,
@@ -4795,7 +4796,6 @@ export function SessionPane({
     agentService: baseWorkspaceServices.zcodeAgentService,
     resetAt: quotaResume?.nextResetAt ?? null,
     enabled: quotaResume !== null,
-    autoEnabled: sharedSettings?.autoResumeEnabled !== false,
   });
   useEffect(() => {
     autoResumeRef.current = autoResume;
