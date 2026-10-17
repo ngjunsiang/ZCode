@@ -40,6 +40,7 @@ import {
   IMediaPreviewService,
   IOffPeakTaskService,
   IModelSelectionService,
+  IProviderSettingsService,
   ISettingService,
   IOnboardingRecordService,
   IWindowControllerService,
@@ -71,6 +72,7 @@ import {
   decideResumeTurnDispatch,
   isEntitlementQuotaAvailable,
   nextEntitlementResetAt,
+  resolveSessionPinnedQuotaResumeRequest,
   sendHostCasCommandV4,
   ZCodeV4CommandRejectedError,
   type HostApiNetworkTransport,
@@ -932,7 +934,38 @@ async function dispatchResumeTurnRun(
   let freshResetAt: number | null = null;
   if (usageStatsService) {
     try {
-      const snapshot = await usageStatsService.getEntitlementSnapshot();
+      // U67 延续（ADR-028）：无参 getEntitlementSnapshot() 在本 host 恒得 not_configured
+      // 空快照（resolveApiAuthorization 无人接线）——先按绑定会话的模型 pin 查询身份
+      // （renderer N10 同语义：providerId + registry 静态 access + requirePreferredProvider），
+      // 使耗尽读数携带真实 nextResetTime 供跟随服务器。pin 不到（会话读不了/无 provider/
+      // 无 entitled 权限）回退无参调用并留痕；派发语义不变（undefined ⇒ 派发，N19）。
+      const agentServiceForPin = targetServices.getOptional(IZCodeAgentService);
+      const providerSettingsService = targetServices.getOptional(IProviderSettingsService);
+      const pin = await resolveSessionPinnedQuotaResumeRequest({
+        readSession: agentServiceForPin
+          ? () =>
+              agentServiceForPin.readSession({
+                workspacePath: request.workspacePath,
+                ...(request.workspaceIdentity
+                  ? { workspaceIdentity: request.workspaceIdentity }
+                  : {}),
+                sessionId: taskId,
+                runtimePolicy: "existing-only",
+                contentProfile: "index",
+              })
+          : async () => null,
+        getView: providerSettingsService
+          ? () => providerSettingsService.getView()
+          : async () => null,
+      });
+      if (pin.kind !== "request") {
+        logger.warn(
+          `resumeTurn 预检无法构造 pinned 权益请求（${pin.kind}），回退无参查询 automation=${request.automationId} runId=${request.runId}`,
+        );
+      }
+      const snapshot = await usageStatsService.getEntitlementSnapshot(
+        pin.kind === "request" ? pin.request : undefined,
+      );
       quotaAvailable = isEntitlementQuotaAvailable(snapshot);
       freshResetAt = nextEntitlementResetAt(snapshot);
     } catch (error) {

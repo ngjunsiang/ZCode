@@ -331,6 +331,28 @@ export class AutomationRepo {
     // BEGIN IMMEDIATE 串行化“全状态总数检查 + 插入”，确保本地任务索引不会突破 20 条。
     db.exec("BEGIN IMMEDIATE");
     try {
+      // fork ADR-028（规则 10 幂等）：resumeTurn 每会话至多一张待执行卡。检测方
+      // （host 侧 autoResumeHostScheduler）与手动点击可能并发观察到同一失败，
+      // 事务外的 list-then-create 竞态会插入两行；在属主事务内查 active/paused
+      // 既有行，命中即原样返回（不插入、不耗 20 上限），双建窗口在此关闭。
+      // fire-time stale-CAS → obsolete 结算删除仍保留为安全网。
+      if ((params.action ?? "prompt") === "resumeTurn" && params.targetTaskId) {
+        const existing = db
+          .prepare(
+            `SELECT * FROM automations
+            WHERE action = 'resumeTurn' AND target_task_id = @target_task_id
+              AND workspace_key = @workspace_key
+              AND lifecycle_status IN ('active', 'paused')
+            ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get({ target_task_id: params.targetTaskId, workspace_key: workspaceKey }) as unknown as
+          | AutomationRow
+          | undefined;
+        if (existing) {
+          db.exec("COMMIT");
+          return rowToAutomation(existing);
+        }
+      }
       const countRow = db.prepare("SELECT COUNT(*) AS count FROM automations").get() as {
         count: number | bigint;
       };
