@@ -5,6 +5,10 @@
 // ADR-014（2026-10-13）：失败事实源 = core projection（live 权威）优先，冷恢复时
 // 回退 host.getConversationControl（v4 投影 control，transcript-hydration 重建）。
 // 不注入该钩子的用例同时证明「无钩子宿主行为不变」。
+// ADR-029 (2026-10-18): third fallback — when projection and snapshot control are
+// both empty (the unmounted ADR-028 host-dispatch case), the guard consults
+// ensureHydratedConversationControl before concluding "no failed turn"; hydration
+// failure degrades to the ADR-014 rejection.
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -53,6 +57,9 @@ function makeFixture(options: {
   busy?: boolean;
   projection?: ProjectionStub;
   conversationControl?: ControlStub | null;
+  /** ADR-029: ensureHydratedConversationControl return (or "throw" to simulate
+   * hydration failure). Absent = hook not wired (legacy host shape). */
+  hydratedControl?: ControlStub | null | "throw";
   executeTurnError?: Error;
 }): Fixture {
   const calls: RecordedCall[] = [];
@@ -82,6 +89,16 @@ function makeFixture(options: {
     ...(options.conversationControl === undefined
       ? {}
       : { getConversationControl: () => options.conversationControl ?? null }),
+    ...(options.hydratedControl === undefined
+      ? {}
+      : {
+          ensureHydratedConversationControl: async () => {
+            if (options.hydratedControl === "throw") {
+              throw new Error("hydration unavailable");
+            }
+            return options.hydratedControl;
+          },
+        }),
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -292,4 +309,107 @@ test("live 优先：投影 error 仍以投影为准，不被陈旧 control 否�
   const result = await resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope());
   assert.equal(result, undefined);
   assert.ok(fixture.calls.some((call) => call.fn === "executeTurn"));
+});
+
+// ── ADR-029（2026-10-18）：unmounted-dispatch 回退矩阵 ──────────────────
+// The 2026-10-18 incident shape: the ADR-028 host dispatch resumed and
+// commanded sessions with no renderer ever subscribed, so the publisher (and
+// its control) stayed at the empty phase "draft" while the persisted
+// transcript still ended in the quota failure.
+
+test("ADR-029：投影丢失 + control 未 hydrate（draft）+ 按需 hydration 命中配额失败 → 派发续跑轮", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    conversationControl: { phase: "draft", lastError: null },
+    hydratedControl: {
+      phase: "error",
+      lastError: {
+        code: "Error",
+        message: "usage limit reached",
+        attribution: { providerErrorCode: "1308" },
+      },
+    },
+  });
+  const result = await resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope());
+  assert.equal(result, undefined);
+  const dispatch = fixture.calls.find((call) => call.fn === "executeTurn");
+  assert.ok(dispatch);
+  const [prompt, , options] = dispatch.args as [string, unknown, Record<string, unknown>];
+  assert.ok(prompt.includes("usage limit"));
+  assert.equal(options.inputVisibility, "model-only");
+  assert.ok(fixture.calls.some((call) => call.fn === "setQueueAutoDrain"));
+});
+
+test("ADR-029：control 缺失（null）+ 按需 hydration 命中 → 派发", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    conversationControl: null,
+    hydratedControl: {
+      phase: "error",
+      lastError: { attribution: { providerErrorCode: "1005" } },
+    },
+  });
+  const result = await resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope());
+  assert.equal(result, undefined);
+  assert.ok(fixture.calls.some((call) => call.fn === "executeTurn"));
+});
+
+test("ADR-029：hydration 回退仍执行配额词表校验 → 3008 guard.resumeNotQuotaFailed", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    hydratedControl: {
+      phase: "error",
+      lastError: { code: "Error", attribution: { providerErrorCode: "3008" } },
+    },
+  });
+  const reason = await rejectionOf(() =>
+    resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope()),
+  );
+  assert.equal(reason, "guard.resumeNotQuotaFailed");
+});
+
+test("ADR-029：hydration 结果非失败终态（idle）→ guard.resumeNoFailedTurn", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    hydratedControl: { phase: "idle", lastError: null },
+  });
+  const reason = await rejectionOf(() =>
+    resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope()),
+  );
+  assert.equal(reason, "guard.resumeNoFailedTurn");
+});
+
+test("ADR-029：hydration 抛错退化为 ADR-014 行为（拒绝，不崩）→ guard.resumeNoFailedTurn", async () => {
+  const fixture = makeFixture({
+    projection: { status: "idle" },
+    hydratedControl: "throw",
+  });
+  const reason = await rejectionOf(() =>
+    resumeTurnHandlers.resumeTurn(fixture.host, resumeEnvelope()),
+  );
+  assert.equal(reason, "guard.resumeNoFailedTurn");
+  assert.equal(fixture.calls.length, 0);
+});
+
+test("ADR-029：live 优先序不被破坏——投影 error 时不调用 hydration 钩子", async () => {
+  let hydrationCalls = 0;
+  const fixture = makeFixture({
+    projection: {
+      status: "error",
+      lastError: { attribution: { providerErrorCode: "1313" } },
+    },
+    hydratedControl: { phase: "idle", lastError: null },
+  });
+  // Wrap the hook to count invocations.
+  const hostWithCounter = {
+    ...fixture.host,
+    ensureHydratedConversationControl: async () => {
+      hydrationCalls += 1;
+      return { phase: "idle" as const, lastError: null };
+    },
+  } as typeof fixture.host;
+  const result = await resumeTurnHandlers.resumeTurn(hostWithCounter, resumeEnvelope());
+  assert.equal(result, undefined);
+  assert.ok(fixture.calls.some((call) => call.fn === "executeTurn"));
+  assert.equal(hydrationCalls, 0);
 });
