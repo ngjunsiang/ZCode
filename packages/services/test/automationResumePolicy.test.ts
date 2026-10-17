@@ -8,6 +8,7 @@ import {
   allBucketsExhausted,
   decideResumeTurnDispatch,
   isEntitlementQuotaAvailable,
+  isQuotaClassifiedResumeError,
   nextEntitlementResetAt,
 } from "../src/session/automationResumePolicy.js";
 
@@ -189,5 +190,27 @@ describe("isEntitlementQuotaAvailable / nextEntitlementResetAt", () => {
   it("allBucketsExhausted：remaining 缺失时回退 percentage=0 判定，未知值不当 0", () => {
     expect(allBucketsExhausted([{ percentage: 0 } as never])).toBe(true);
     expect(allBucketsExhausted([{} as never])).toBe(false);
+  });
+});
+
+describe("isQuotaClassifiedResumeError (ADR-028 检测词表)", () => {
+  it("配额族 code 命中：1005 / GLM 1308–1321 / insufficient_quota 家族 / 2056 / 20097", () => {
+    for (const code of ["1005", "1308", "1316", "1321", "insufficient_quota", "2056", "20097"]) {
+      expect(isQuotaClassifiedResumeError({ code })).toBe(true);
+    }
+  });
+
+  it("code 缺失或被包装时回退 attribution.providerErrorCode（冷恢复降级形状）", () => {
+    expect(isQuotaClassifiedResumeError({ attribution: { providerErrorCode: "1309" } })).toBe(true);
+    expect(
+      isQuotaClassifiedResumeError({ code: "Error", attribution: { providerErrorCode: "1320" } }),
+    ).toBe(true);
+  });
+
+  it("并发上限族（3008–3010）与未知码明确排除（ADR-005）", () => {
+    for (const code of ["3008", "3009", "3010", "404", "ECONNRESET"]) {
+      expect(isQuotaClassifiedResumeError({ code })).toBe(false);
+    }
+    expect(isQuotaClassifiedResumeError({})).toBe(false);
   });
 });
