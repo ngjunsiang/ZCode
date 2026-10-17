@@ -47,7 +47,7 @@ Follows AGENTS.md spec-first rule. Terminology follows the v4 conversation proto
 | Fact | Owner | Notes |
 | --- | --- | --- |
 | Turn/transcript state, admission, continuation execution | CLI (core runtime) | sole authority; renderer never fabricates conversation state |
-| `control.phase`, `control.lastError`, `rows.window` | CLI projection → renderer read-only | detection predicate is pure derivation, no new persisted state; after a cold restart the CLI guard additionally reads the v4 projection control via the optional `getConversationControl` host hook as a fallback (local ADR-015) — live projection still takes precedence, so banner and guard can never answer "did the last turn fail" from disagreeing stores |
+| `control.phase`, `control.lastError`, `rows.window` | CLI projection → renderer read-only | detection predicate is pure derivation, no new persisted state; after a cold restart the CLI guard additionally reads the v4 projection control via the optional `getConversationControl` host hook as a fallback (local ADR-015) — live projection still takes precedence, so banner and guard can never answer "did the last turn fail" from disagreeing stores. **ADR-029:** both in-memory sources are empty for a session no renderer ever hydrated (the ADR-028 host dispatch case), so the guard has a third fallback — `ensureHydratedConversationControl`, which builds the same projection a renderer subscribe would, on demand, from the persisted transcript; evaluation order projection → snapshot control → on-demand hydration, and empty in-memory evidence means *unknown*, never *not failed* (`spec-auto-resume-mechanism.md` §2/§3) |
 | Quota availability / reset times | entitlement service snapshot | renderer caches; un-grey requires a post-boundary refresh |
 | Button visibility + enabled state | renderer (derived) | `useQuotaResume` hook; dismissal store must not hide a Resume-bearing banner |
 | Queue autodrain | CLI | resume command flips it via existing handler logic |
@@ -65,6 +65,14 @@ Follows AGENTS.md spec-first rule. Terminology follows the v4 conversation proto
   `V4CommandCoreHost.getConversationControl(sessionId)` returning a narrow
   `{phase, lastError}` face over the v4 publisher snapshot control; hosts without
   the hook behave exactly as before (no behavior change for plain prompt turns).
+- **Guard on-demand hydration fallback** (local ADR-029): optional host hook
+  `V4CommandCoreHost.ensureHydratedConversationControl(sessionId)` — consulted
+  only when projection and snapshot control are both empty; builds the v4
+  projection through the same pipeline a renderer subscribe uses
+  (cold-ready / hydration, ready-flight deduped), then returns the same narrow
+  `{phase, lastError}` face. Hydration failure degrades to the ADR-015 behavior
+  (reject `guard.resumeNoFailedTurn`); the schedule lane's obsolete settlement
+  re-verifies persisted truth before believing it (ADR-029, G6).
 - **No capability negotiation** (ADR-003): old CLI rejects with
   `proto.invalidPayload`; UI treats any non-accepted ACK as a failed attempt.
 - **Renderer derivation** (N2/N3): pure functions over the existing snapshot +
