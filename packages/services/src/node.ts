@@ -329,8 +329,16 @@ export {
   getActiveQuotaBuckets,
   allBucketsExhausted,
   isEntitlementQuotaAvailable,
+  isQuotaClassifiedResumeError,
   nextEntitlementResetAt,
 } from "./session/automationResumePolicy.js";
+// fork ADR-028：host 侧（检测 + resumeTurn 派发预检）共用的 pinned 权益请求构造。
+export {
+  buildPinnedQuotaResumeEntitlementRequest,
+  resolveSessionPinnedQuotaResumeRequest,
+  resolveSessionQuotaResumeProviderId,
+  type SessionQuotaResumePinResult,
+} from "./session/quotaResumeEntitlementRequest.js";
 // 闲时任务与 automation 同库不同表；类型/常量全独立。
 export { OffPeakTaskRepo, OFF_PEAK_CLAIM_STALE_MS } from "./session/offPeakTaskRepo.js";
 // fork Auto-Resume：host 侧 resumeTurn CAS 派发与拒绝分流共用件。
@@ -447,6 +455,11 @@ import { resolveZCodeAgentPresentationSurface } from "./zcode-agent/zcodeAgentPr
 import { createZCodeTaskServiceAdapter } from "./zcode-agent/zcodeTaskServiceAdapter.js";
 import { createZCodeSessionService } from "./zcode-session/zcodeSessionService.js";
 import { createZCodeTaskIndexSyncer } from "./zcode-agent/zcodeTaskIndexSyncer.js";
+import {
+  createAutoResumeHostScheduler,
+  type AutoResumeHostScheduler,
+} from "./zcode-agent/autoResumeHostScheduler.js";
+import { AutomationService } from "./session/automationService.js";
 import { TaskIndexRepo } from "./session/taskIndexRepo.js";
 import { AutomationRepo } from "#src/session/automationRepo.js";
 import type { AppSettings } from "@zcode/shared";
@@ -713,6 +726,8 @@ interface ManagedCuaHelperHostDispose {
 // 已授权主体常驻、甚至在 services 重建时再起一个 → 多实例/孤儿/权限主体泄漏。用与 ServiceCollection 绑定
 // 的 WeakMap 侧表登记，dispose 时统一终止（best-effort，不阻断其它资源回收）。
 const managedCuaHelperHosts = new WeakMap<ServiceCollection, ManagedCuaHelperHostDispose>();
+// fork ADR-028：host 侧自动调度检测器随 service collection 存活，dispose 链统一退订。
+const autoResumeSchedulers = new WeakMap<ServiceCollection, AutoResumeHostScheduler>();
 const providerRuntimes = new WeakMap<ServiceCollection, ProviderRuntime>();
 const providerProvisioningSources = new WeakMap<ServiceCollection, ProviderProvisioningSource>();
 const providerProvisioningTriggerDisposers = new WeakMap<
@@ -2657,6 +2672,15 @@ export function createLocalServices(options: {
   const marketingAssets = createMarketingAssetRegistry({
     allowLoopback: ZCODE_ENV === "test" || process.env.NODE_ENV === "development",
   });
+  // fork ADR-028（U68）：实例提升——IUsageStatsService 注册与 autoResumeHostScheduler
+  // 共享同一 usageStatsService（原先内联在 register 里，第二个消费者拿不到同构实例）。
+  const usageStatsService = createUsageStatsService({
+    apiClient,
+    accountRequestAuthService,
+    credentialService,
+    zcodeAgentService,
+    officialMcpCredentialSource,
+  });
   const services = new ServiceCollection()
     .register(
       IMarketingTouchService,
@@ -2718,16 +2742,7 @@ export function createLocalServices(options: {
     .register(IFileWatcherService, createFileWatcherService())
     .register(IOAuthService, oauthService)
     .register(ISourceServerWorkspaceService, sourceServerWorkspaceService)
-    .register(
-      IUsageStatsService,
-      createUsageStatsService({
-        apiClient,
-        accountRequestAuthService,
-        credentialService,
-        zcodeAgentService,
-        officialMcpCredentialSource,
-      }),
-    )
+    .register(IUsageStatsService, usageStatsService)
     .register(ICodingPlanSubscriptionService, codingPlanSubscriptionService)
     .register(
       IClientConfigService,
@@ -2999,6 +3014,21 @@ export function createLocalServices(options: {
   services
     .register(IProviderSettingsService, providerRuntime.providerSettings)
     .register(IModelSelectionService, providerRuntime.modelSelection);
+  // fork ADR-028（U68/N20）：host 侧自动调度检测器。订阅 syncer 的会话终态迁移，
+  // 配额失败经既有 automationService.create 落 resumeTurn 调度（规则 8 host 化）；
+  // 覆盖 scheduler job / web-remote 驱动等永不挂载渲染面板的会话。生命周期随
+  // service collection（dispose 链退订，WeakMap 侧表同 providerRuntimes 范式）。
+  autoResumeSchedulers.set(
+    services,
+    createAutoResumeHostScheduler({
+      taskIndexSyncer: zcodeTaskIndexSyncer,
+      agentService: zcodeAgentService,
+      automationService: new AutomationService(new AutomationRepo()),
+      usageStatsService,
+      providerSettingsService: providerRuntime.providerSettings,
+      settingService,
+    }),
+  );
   if (isDesktopAttachedRemote || options.providerProvisioningTargetEnabled === true) {
     services.register(
       IProviderProvisioningTargetService,
@@ -3144,6 +3174,9 @@ export function disposeServiceResources(services: ServiceCollection): void {
   if (managedCuaHelperHost) {
     void managedCuaHelperHost.stop().catch(() => {});
   }
+  // fork ADR-028：退订 host 侧自动调度检测器（terminal 事件订阅）。
+  autoResumeSchedulers.get(services)?.dispose();
+  autoResumeSchedulers.delete(services);
   // 关闭共享 tasks-index sqlite 句柄（Windows 上悬着句柄会让后续目录清理撞 EBUSY）
   for (const repo of sharedSqliteRepos.get(services) ?? []) repo.close();
   sharedSqliteRepos.delete(services);
@@ -3188,6 +3221,9 @@ export async function disposeServiceResourcesAndWait(services: ServiceCollection
   if (managedCuaHelperHost) {
     await managedCuaHelperHost.stop().catch(() => {});
   }
+  // fork ADR-028：退订 host 侧自动调度检测器（terminal 事件订阅）。
+  autoResumeSchedulers.get(services)?.dispose();
+  autoResumeSchedulers.delete(services);
   // 关闭共享 tasks-index sqlite 句柄（同 disposeServiceResources，异步收口路径也要释放）
   for (const repo of sharedSqliteRepos.get(services) ?? []) repo.close();
   sharedSqliteRepos.delete(services);
