@@ -841,3 +841,55 @@ resumeTurn row in tasks-index).
 **Not contributed upstream.** Same intake situation as ADR-022; lives as fork
 patches U68–U71 / N20–N21 (+ N6/N17 amended, N16 removed) on
 `fix/auto-resume-host-scheduling/3.15.1` targeting patch/3.15.1.
+
+## ADR-029: resumeTurn guard gains on-demand hydration fallback; obsolete settlement verifies persisted truth  {2026-10-18}
+
+Third Auto-Resume failure (2026-10-18 ~00:14–00:16, after U67/N19 and ADR-028),
+and the first one where scheduling and firing both worked: the host-side
+scheduler detected all 4 quota failures, pinned the correct boundary
+(00:14:35.496), and every resumeTurn run fired on time — then all four were
+rejected `guard.resumeNoFailedTurn`, settled "obsolete" per rule 5, and their
+automation rows deleted. Root cause: the guard answers "did the last turn
+fail" from two in-memory stores — the core projection (loses TurnError on
+every cold resume) and the v4 publisher snapshot control (hydrated from the
+persisted transcript only by renderer entry points: subscribe / rowsRange /
+plans). The ADR-028 dispatch resumes and commands sessions with **no mounted
+renderer**, so both sources were empty (an unhydrated publisher reports phase
+"draft") even though each transcript still ended in the persisted 1308 quota
+failure. A blind rejection was believed as a verified negative.
+
+The failure moved one layer down with each fix: trigger (renderer → host,
+ADR-028) → fact source (mounted → on-demand, ADR-029). Mechanism spine,
+store inventory, gate catalogue (G1–G6) and invariants are now recorded in
+`.fork/spec-auto-resume-mechanism.md`; the standing rule: **any gate that can
+veto or delete the plan must be answerable from mount-independent state —
+empty in-memory evidence is *unknown*, never *not needed*.**
+
+Fix, two named gates:
+
+- **G4 — `ensureHydratedConversationControl`.** Third guard fallback in
+  `handlers/resume-turn.ts`: consulted only when projection and snapshot
+  control are both empty. The gateway method builds the projection through the
+  same pipeline a renderer subscribe uses (rowsRange's construction:
+  ready-flight reuse / cold-ready for non-live sessions / hydration for
+  live-but-unhydrated publishers) and returns the same narrow
+  `{phase, lastError}` face. Hydration failure degrades to the ADR-014
+  behavior (reject); the optional host hook keeps hosts without it unchanged.
+- **G6 — `classifyResumeTurnGuardRejection`.** The schedule lane no longer
+  treats every guard rejection as obsolete: `resumeNoFailedTurn` is re-checked
+  against the persisted sessions-index (`readSession` existing-only, content
+  profile "index" — the scheduler's own source) and only a verified negative —
+  or an affirmative judgment (`resumeNotIdle`, `resumeNotQuotaFailed`: the
+  guard saw the fact and judged its content) — settles obsolete. A
+  contradicted or unavailable re-check re-arms transiently (+15 min step,
+  horizon-bounded) with a warn; row kept. Manual lane unchanged (never
+  settles the plan).
+
+Verified on Linux: bootstrap resume-turn matrix 18/18 via `tsx --test`
+(12 legacy + 6 new: unmounted-dispatch dispatch, null-control dispatch,
+non-quota 3008 rejection, hydrated-idle rejection, hydration-failure
+degradation, live-precedence no-hydration-call); services
+automationResumePolicy 22/22 vitest (16 legacy + 6 new settlement cases).
+Root `pnpm typecheck` / `pnpm lint` at commit time. **Not contributed
+upstream** (fork-local; same intake situation as ADR-028). Patches U74/N22
+(CLI) and U75/N23 (host + services).
