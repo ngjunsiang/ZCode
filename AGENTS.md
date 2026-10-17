@@ -80,3 +80,22 @@
 - `info` 用于进程和会话生命周期、权限结果、一次性初始化等生产可用事件。
 - `warn` 用于可恢复异常；`error` 用于崩溃、握手失败、鉴权丢失等不可恢复错误。
 - 不在日志、示例或提交中写入凭据、真实用户数据和内部服务地址。
+
+---
+
+## Fork Addendum — hydra line only (append-only, keep last)
+
+This trailing block is a hydra-fork amendment (added 2026-10-18). Everything
+above is the upstream baseline text. Keep this block LAST in the file and do
+not encode fork-local rules by editing baseline sections — append here
+instead, so upstream AGENTS.md updates merge/rebase cleanly around it. If an
+upstream update conflicts with this block, resolve in favor of keeping this
+block's rules.
+
+- **Comment language override.** Fork patches are local-only and will never
+  be submitted upstream, so upstream's communication preference does not
+  bind fork work. The baseline rule 「修复 bug 时用中文注释说明原因和修复依据」
+  is overridden for this fork: write new or changed code/test comments in
+  English (cause and fix basis still required, per the baseline rule).
+  Existing Chinese comments stay as-is — do not translate them
+  opportunistically.
