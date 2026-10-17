@@ -6,6 +6,7 @@ import {
   RESUME_TURN_RESET_MARGIN_MS,
   RESUME_TURN_REARM_STEP_MS,
   allBucketsExhausted,
+  classifyResumeTurnGuardRejection,
   decideResumeTurnDispatch,
   isEntitlementQuotaAvailable,
   isQuotaClassifiedResumeError,
@@ -212,5 +213,70 @@ describe("isQuotaClassifiedResumeError (ADR-028 检测词表)", () => {
       expect(isQuotaClassifiedResumeError({ code })).toBe(false);
     }
     expect(isQuotaClassifiedResumeError({})).toBe(false);
+  });
+});
+
+// ── ADR-029（G6）：guard 拒绝的 obsolete 结算裁决 ──────────────────────────
+describe("classifyResumeTurnGuardRejection", () => {
+  it("resumeNoFailedTurn + persisted re-check contradicts（仍为配额失败）→ transient re-arm，计划保留（2026-10-18 事故形状）", () => {
+    const decision = classifyResumeTurnGuardRejection({
+      reasonCode: "guard.resumeNoFailedTurn",
+      persistedFailureStillQuota: true,
+      now: NOW,
+    });
+    expect(decision).toEqual({ kind: "transient", retryAtMs: NOW + RESUME_TURN_REARM_STEP_MS });
+  });
+
+  it("resumeNoFailedTurn + re-check unavailable（null）→ fail-safe transient re-arm", () => {
+    const decision = classifyResumeTurnGuardRejection({
+      reasonCode: "guard.resumeNoFailedTurn",
+      persistedFailureStillQuota: null,
+      now: NOW,
+    });
+    expect(decision).toEqual({ kind: "transient", retryAtMs: NOW + RESUME_TURN_REARM_STEP_MS });
+  });
+
+  it("resumeNoFailedTurn + verified negative（不再是配额失败）→ obsolete", () => {
+    expect(
+      classifyResumeTurnGuardRejection({
+        reasonCode: "guard.resumeNoFailedTurn",
+        persistedFailureStillQuota: false,
+        now: NOW,
+      }),
+    ).toEqual({ kind: "obsolete" });
+  });
+
+  it("affirmative judgments 不读 re-check：resumeNotIdle / resumeNotQuotaFailed → obsolete", () => {
+    for (const reasonCode of ["guard.resumeNotIdle", "guard.resumeNotQuotaFailed"]) {
+      expect(
+        classifyResumeTurnGuardRejection({
+          reasonCode,
+          persistedFailureStillQuota: true,
+          now: NOW,
+        }),
+      ).toEqual({ kind: "obsolete" });
+    }
+  });
+
+  it("未知/缺失 reasonCode 保持既有 obsolete 行为", () => {
+    for (const reasonCode of ["proto.payloadTooLarge", null, undefined]) {
+      expect(
+        classifyResumeTurnGuardRejection({
+          reasonCode,
+          persistedFailureStillQuota: null,
+          now: NOW,
+        }),
+      ).toEqual({ kind: "obsolete" });
+    }
+  });
+
+  it("rearmStepMs 可注入（与 dispatch 侧同源覆盖）", () => {
+    const decision = classifyResumeTurnGuardRejection({
+      reasonCode: "guard.resumeNoFailedTurn",
+      persistedFailureStillQuota: true,
+      now: NOW,
+      rearmStepMs: 5 * MINUTE,
+    });
+    expect(decision).toEqual({ kind: "transient", retryAtMs: NOW + 5 * MINUTE });
   });
 });
