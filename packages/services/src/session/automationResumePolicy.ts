@@ -158,3 +158,44 @@ export function decideResumeTurnDispatch(input: {
   }
   return { kind: "permanent" };
 }
+
+/**
+ * Guard-rejection settlement decision (fork ADR-029, gate G6 — schedule lane
+ * only; manual runs never settle the plan). Pure, no IO; fed by the host's
+ * mount-independent re-check of the persisted sessions-index.
+ *
+ * Invariant (spec-auto-resume-mechanism.md §1): a plan may only be deleted on a
+ * verified negative or an affirmative judgment. `guard.resumeNoFailedTurn` is
+ * the single code a blind evaluator produces — "no failed last turn seen
+ * anywhere" can mean the session recovered, or that the evaluator had no
+ * renderer-hydrated projection to look at (2026-10-18 incident: 4/4 scheduled
+ * resumes deleted this way while every transcript still ended in the quota
+ * failure). It is therefore only believed when the persisted re-check agrees;
+ * a contradiction or an unavailable re-check re-arms — the dispatch horizon
+ * bounds the loop.
+ */
+export type ResumeTurnGuardRejectionDecision =
+  | { kind: "obsolete" }
+  | { kind: "transient"; retryAtMs: number };
+
+export function classifyResumeTurnGuardRejection(input: {
+  reasonCode: string | null | undefined;
+  /** Persisted re-check at rejection time: does the session still end in a
+   * quota-class failure? true/false = verified; null = re-check unavailable.
+   * Ignored for every reasonCode other than guard.resumeNoFailedTurn. */
+  persistedFailureStillQuota: boolean | null;
+  now: number;
+  rearmStepMs?: number;
+}): ResumeTurnGuardRejectionDecision {
+  if (input.reasonCode !== "guard.resumeNoFailedTurn") {
+    // resumeNotIdle (busy/queued ⇒ user is active) and resumeNotQuotaFailed
+    // (the guard saw a lastError and classified it non-quota) are affirmative
+    // judgments; unknown codes keep the legacy obsolete behavior.
+    return { kind: "obsolete" };
+  }
+  if (input.persistedFailureStillQuota === false) {
+    return { kind: "obsolete" };
+  }
+  const rearmStepMs = input.rearmStepMs ?? RESUME_TURN_REARM_STEP_MS;
+  return { kind: "transient", retryAtMs: input.now + rearmStepMs };
+}
