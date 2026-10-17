@@ -9,6 +9,8 @@
 import type {
   CommandEnvelope,
   CommandResult,
+  SessionErrorInfo,
+  SessionPhase,
 } from "@zcode/shared/zcode-protocol-v4";
 import { traceContextToLogContext } from "@zcode/contracts";
 import { requireRecord } from "../record-access.js";
@@ -116,12 +118,34 @@ async function resumeTurn(
   // hasActiveOrQueuedTurnWork + CAS revision 双闸拦下，与此处时序无关。
   const projection = await record.app.runtime.getProjection();
   const coldControl = host.getConversationControl?.(record.app.sessionId) ?? null;
-  const lastError =
+  let lastError =
     projection.status === "error" && projection.lastError
       ? projection.lastError
       : coldControl?.phase === "error"
         ? coldControl.lastError
         : null;
+  if (!lastError) {
+    // ADR-029 third fallback (2026-10-18 incident): empty in-memory evidence is
+    // *unknown*, not a verified negative. The ADR-028 host dispatch resumes and
+    // commands sessions no renderer ever hydrated, so both sources above are
+    // empty exactly there (a publisher created without hydration reports phase
+    // "draft"); build the v4 projection on demand — same pipeline a subscribe
+    // uses — and read its control before concluding "no failed turn". Hydration
+    // failure degrades to the ADR-014 behavior; the schedule lane re-verifies
+    // persisted truth before settling that rejection as obsolete (host-side G6,
+    // classifyResumeTurnGuardRejection).
+    let hydratedControl: { phase: SessionPhase; lastError: SessionErrorInfo | null } | null =
+      null;
+    try {
+      hydratedControl =
+        (await host.ensureHydratedConversationControl?.(record.app.sessionId)) ?? null;
+    } catch {
+      hydratedControl = null;
+    }
+    if (hydratedControl?.phase === "error" && hydratedControl.lastError) {
+      lastError = hydratedControl.lastError;
+    }
+  }
   if (!lastError) {
     throw new V4ResumeNoFailedTurnError();
   }
