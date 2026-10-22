@@ -1,0 +1,56 @@
+{
+ "config": "opt1",
+ "cold": "/home/kureshii/laymanswiki",
+ "b1": {
+  "switches": 12,
+  "blockedMsPerSwitch": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   362,
+   379,
+   406,
+   448,
+   495,
+   840
+  ],
+  "blockedMedian": 362,
+  "blockedMax": 840,
+  "triggerMedian": 560,
+  "triggerCount": 6
+ },
+ "b3": {
+  "firstTriggerMs": "timeout",
+  "revisitTriggerMs": 876,
+  "firstPrepareOffsetMs": null,
+  "revisitPrepareOffsetMs": null,
+  "firstReadDurMs": null,
+  "revisitReadDurMs": null,
+  "coldSpawns": 0
+ },
+ "host": {
+  "listTaskListCount": 4,
+  "gitRefreshCount": 5,
+  "gitRefreshDurMs": [
+   7.1,
+   43.6,
+   22.6,
+   29.1,
+   27.5
+  ],
+  "readWorkspacePresentationCount": 4,
+  "agentSpawnsTotal": 7
+ },
+ "b2": {
+  "listTaskListCount": 1,
+  "windowMs": 15075,
+  "longtasks": {
+   "count": 16,
+   "sum": 3256,
+   "max": 318
+  }
+ }
+}
