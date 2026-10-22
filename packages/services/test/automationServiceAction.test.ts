@@ -62,9 +62,9 @@ describe("AutomationService resumeTurn 动作", () => {
     await expect(
       service.create(makeResumeParams({ targetTaskId: undefined })),
     ).rejects.toBeInstanceOf(InvalidAutomationActionError);
-    await expect(
-      service.create(makeResumeParams({ recurring: true })),
-    ).rejects.toBeInstanceOf(InvalidAutomationActionError);
+    await expect(service.create(makeResumeParams({ recurring: true }))).rejects.toBeInstanceOf(
+      InvalidAutomationActionError,
+    );
     await expect(
       service.create(
         makeResumeParams({
@@ -72,9 +72,9 @@ describe("AutomationService resumeTurn 动作", () => {
         }),
       ),
     ).rejects.toBeInstanceOf(InvalidAutomationActionError);
-    await expect(
-      service.create(makeResumeParams({ prompt: "do things" })),
-    ).rejects.toBeInstanceOf(InvalidAutomationActionError);
+    await expect(service.create(makeResumeParams({ prompt: "do things" }))).rejects.toBeInstanceOf(
+      InvalidAutomationActionError,
+    );
     await expect(
       service.create(
         makeResumeParams({
@@ -93,18 +93,16 @@ describe("AutomationService resumeTurn 动作", () => {
 
   it("编辑：仅允许标题；调度/提示词等定义字段被拒", async () => {
     const created = await service.create(makeResumeParams());
-    expect((await service.update(created.automationId, { title: "新标题" }))?.title).toBe(
-      "新标题",
+    expect((await service.update(created.automationId, { title: "新标题" }))?.title).toBe("新标题");
+    await expect(service.update(created.automationId, { prompt: "x" })).rejects.toBeInstanceOf(
+      InvalidAutomationActionError,
     );
-    await expect(
-      service.update(created.automationId, { prompt: "x" }),
-    ).rejects.toBeInstanceOf(InvalidAutomationActionError);
     await expect(
       service.update(created.automationId, { cronExpr: "0 9 * * *" }),
     ).rejects.toBeInstanceOf(InvalidAutomationActionError);
-    await expect(
-      service.update(created.automationId, { recurring: true }),
-    ).rejects.toBeInstanceOf(InvalidAutomationActionError);
+    await expect(service.update(created.automationId, { recurring: true })).rejects.toBeInstanceOf(
+      InvalidAutomationActionError,
+    );
   });
 
   it("prompt 动作回归：无 action 的旧调用仍要求提示词、默认无限循环", async () => {

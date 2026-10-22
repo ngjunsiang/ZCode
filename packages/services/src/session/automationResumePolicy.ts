@@ -149,7 +149,11 @@ export function decideResumeTurnDispatch(input: {
   // 「未恢复」重臂，等于把接线缺陷放大成功能失效。仅明确耗尽读数（false）才重臂。
   if (input.quotaAvailable !== false) return { kind: "dispatch" };
   // 服务端给出了新的重置时刻 → 跟随服务器（即使超出视界；服务器改期即事实）。
-  if (input.freshResetAt !== undefined && input.freshResetAt !== null && input.freshResetAt > input.now) {
+  if (
+    input.freshResetAt !== undefined &&
+    input.freshResetAt !== null &&
+    input.freshResetAt > input.now
+  ) {
     return { kind: "transient", retryAtMs: input.freshResetAt + RESUME_TURN_RESET_MARGIN_MS };
   }
   const horizonAt = (input.scheduledAt ?? input.now) + horizonMs;

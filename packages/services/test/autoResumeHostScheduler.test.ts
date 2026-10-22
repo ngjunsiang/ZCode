@@ -78,7 +78,10 @@ function makeEntitlementSnapshot(nextResetTime: number | null) {
     quota:
       nextResetTime === null
         ? null
-        : { level: "standard", limits: [{ meter: "model_usage", remaining: 0, number: 100, nextResetTime }] },
+        : {
+            level: "standard",
+            limits: [{ meter: "model_usage", remaining: 0, number: 100, nextResetTime }],
+          },
   };
 }
 
@@ -152,9 +155,7 @@ describe("createAutoResumeHostScheduler (ADR-028 检测矩阵)", () => {
     const delayMinutes = params.relativeDelayMinutes as number;
     // ceil((boundary−now)/60000)+1，容忍用例执行期间的时间漂移。
     expect(delayMinutes).toBeGreaterThanOrEqual(Math.ceil((boundary - Date.now()) / MINUTE));
-    expect(delayMinutes).toBeLessThanOrEqual(
-      Math.ceil((boundary - Date.now()) / MINUTE) + 1 + 1,
-    );
+    expect(delayMinutes).toBeLessThanOrEqual(Math.ceil((boundary - Date.now()) / MINUTE) + 1 + 1);
     expect(params.title).toContain("Fix the parser");
     harness.scheduler.dispose();
   });
@@ -230,17 +231,13 @@ describe("createAutoResumeHostScheduler (ADR-028 检测矩阵)", () => {
     await fireAndSettle(harness);
     expect(harness.deps.create).toHaveBeenCalledTimes(1);
     const params = harness.deps.create.mock.calls[0][0] as { relativeDelayMinutes: number };
-    expect(params.relativeDelayMinutes).toBe(
-      Math.round(RESUME_TURN_REARM_STEP_MS / MINUTE),
-    );
+    expect(params.relativeDelayMinutes).toBe(Math.round(RESUME_TURN_REARM_STEP_MS / MINUTE));
     harness.scheduler.dispose();
   });
 
   it("pin 解析不到 provider（快照无模型）→ 探测回退仍创建", async () => {
     const harness = createHarness();
-    harness.deps.readSession.mockResolvedValue(
-      makeSessionSnapshot({ settings: { model: {} } }),
-    );
+    harness.deps.readSession.mockResolvedValue(makeSessionSnapshot({ settings: { model: {} } }));
     await fireAndSettle(harness);
     expect(harness.deps.getView).not.toHaveBeenCalled();
     expect(harness.deps.create).toHaveBeenCalledTimes(1);
@@ -377,7 +374,9 @@ describe("quotaResumeEntitlementRequest（pinned 请求构造/解析）", () => 
     expect(buildPinnedQuotaResumeEntitlementRequest(null, PROVIDER_ID)).toBeNull();
     expect(
       buildPinnedQuotaResumeEntitlementRequest(
-        makeProviderView([{ providerId: "other", effectiveConfig: { access: { type: "api-key" } } }]),
+        makeProviderView([
+          { providerId: "other", effectiveConfig: { access: { type: "api-key" } } },
+        ]),
         PROVIDER_ID,
       ),
     ).toBeNull();

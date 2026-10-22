@@ -1026,9 +1026,7 @@ class CronDispatchOutcomeError extends Error {
  * 不投递提示词，改经 sendHostCasCommandV4 派发 v4 resumeTurn（commandId=runId，
  * 使 trackCronRunOutcome 的 inputId 对账与 prompt 路径完全一致）。
  */
-async function dispatchResumeTurnRun(
-  request: CronRunDispatchRequest,
-): Promise<{
+async function dispatchResumeTurnRun(request: CronRunDispatchRequest): Promise<{
   taskId: string;
   sessionId: string;
   settlement?: "completed" | "obsolete";

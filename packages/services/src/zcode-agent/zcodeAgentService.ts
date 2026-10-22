@@ -2909,9 +2909,7 @@ export function createZCodeAgentService(
                 workspaceIdentity: workspace.workspaceIdentity,
                 // 历史 prompt 动作缺省无限循环；resumeTurn 是一次性任务，缺省必须为 false。
                 recurring:
-                  parsed.data.action === "resumeTurn"
-                    ? false
-                    : (parsed.data.recurring ?? true),
+                  parsed.data.action === "resumeTurn" ? false : (parsed.data.recurring ?? true),
                 maxRuns: parsed.data.maxRuns,
               });
               if (automation.targetTaskId) {
@@ -5160,8 +5158,7 @@ export function createZCodeAgentService(
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
         // 历史 prompt 动作缺省无限循环；resumeTurn 是一次性任务，缺省必须为 false。
-        recurring:
-          params.action === "resumeTurn" ? false : (params.recurring ?? true),
+        recurring: params.action === "resumeTurn" ? false : (params.recurring ?? true),
         maxRuns: params.maxRuns,
         endAt: params.endAt,
         scheduleRule: params.scheduleRule,

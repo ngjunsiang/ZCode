@@ -625,8 +625,10 @@ export class AutomationRepo {
           AND (@workspace_key IS NULL OR workspace_key = @workspace_key)
         ORDER BY created_at DESC`,
       )
-      .all({ target_task_id: targetTaskId, workspace_key: workspaceKey ?? null }) as unknown as
-      AutomationRow[];
+      .all({
+        target_task_id: targetTaskId,
+        workspace_key: workspaceKey ?? null,
+      }) as unknown as AutomationRow[];
     return rows.map(rowToAutomation);
   }
 

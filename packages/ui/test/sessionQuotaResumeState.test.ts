@@ -103,11 +103,14 @@ describe("quotaFailedLastTurn", () => {
         lastError: lastError({
           attribution: { providerErrorCode: "1313" },
         }),
-        rows: rows(turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }), toolCall({
-          turnId: TURN_ID,
-          createdAt: 950,
-          status: "success",
-        })),
+        rows: rows(
+          turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
+          toolCall({
+            turnId: TURN_ID,
+            createdAt: 950,
+            status: "success",
+          }),
+        ),
       }),
     ).toBe(true);
   });
@@ -173,9 +176,9 @@ describe("quotaFailedLastTurn", () => {
   it("phase 非 error ⇒ false；quota 码不匹配 ⇒ false；无 rows ⇒ false", () => {
     expect(detect({ phase: "running" })).toBe(false);
     expect(detect({ phase: "completedSuccess" })).toBe(false);
-    expect(
-      detect({ lastError: lastError({ attribution: { providerErrorCode: "3102" } }) }),
-    ).toBe(false);
+    expect(detect({ lastError: lastError({ attribution: { providerErrorCode: "3102" } }) })).toBe(
+      false,
+    );
     expect(detect({ rows: null })).toBe(false);
   });
 });
@@ -188,8 +191,9 @@ function detectAuto(input: {
   rows?: RowsWindow | null;
 }): boolean {
   return quotaFailedLastTurnForAutoResume({
-    phase: (input.phase ??
-      "error") as Parameters<typeof quotaFailedLastTurnForAutoResume>[0]["phase"],
+    phase: (input.phase ?? "error") as Parameters<
+      typeof quotaFailedLastTurnForAutoResume
+    >[0]["phase"],
     lastError: input.lastError === undefined ? lastError() : input.lastError,
     rows: input.rows === undefined ? rows() : input.rows,
   });
@@ -243,11 +247,14 @@ describe("quotaFailedLastTurnForAutoResume", () => {
   it("ADR-015：有已提交工作时两谓词一致为 true（委托关系）", () => {
     const input = {
       lastError: lastError({ attribution: { providerErrorCode: "1313" } }),
-      rows: rows(turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }), toolCall({
-        turnId: TURN_ID,
-        createdAt: 950,
-        status: "success",
-      })),
+      rows: rows(
+        turnHeader({ turnId: TURN_ID, startedAt: 900, state: "failed" }),
+        toolCall({
+          turnId: TURN_ID,
+          createdAt: 950,
+          status: "success",
+        }),
+      ),
     };
     expect(detectAuto(input)).toBe(true);
     expect(detect(input)).toBe(true);
