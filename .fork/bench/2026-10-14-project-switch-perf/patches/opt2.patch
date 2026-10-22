@@ -1,0 +1,61 @@
+diff --git a/packages/ui/src/v4/useWorkspaceSessionsIndexItems.ts b/packages/ui/src/v4/useWorkspaceSessionsIndexItems.ts
+index 4d1c7587..d538c751 100644
+--- a/packages/ui/src/v4/useWorkspaceSessionsIndexItems.ts
++++ b/packages/ui/src/v4/useWorkspaceSessionsIndexItems.ts
+@@ -153,6 +153,15 @@ export function useWorkspaceSessionsIndexItems(
+   // 从各 store 聚合会话 → ZCodeTaskMeta + hydration 状态（tick 驱动重算，引用稳定）。
+   const previousItemsRef = useRef<ZCodeTaskMeta[]>([]);
+   const previousHydratingRef = useRef<string[]>([]);
++  // bench opt2：按 scope 缓存已映射的 metas（以 store 的 logEpoch/seq 为代次）。
++  // 任一 workspace 的帧到达都会触发整轮重算；未变化的 scope 直接复用旧映射，
++  // 把每 tick 的成本从 O(全部 scope 会话) 降到 O(变化 scope)。
++  const scopeMetasCacheRef = useRef(
++    new Map<
++      string,
++      { epoch: string | null; seq: number | null; bindingRevision: string; metas: ZCodeTaskMeta[] }
++    >(),
++  );
+   return useMemo(() => {
+     const metas: ZCodeTaskMeta[] = [];
+     const hydratingEndpointKeys = new Set<string>();
+@@ -180,15 +189,32 @@ export function useWorkspaceSessionsIndexItems(
+       if (isHydratingStore(store)) {
+         hydratingEndpointKeys.add(scope.endpointKey ?? LOCAL_SESSIONS_INDEX_ENDPOINT);
+       }
+-      for (const summary of store.getSessions()) {
+-        metas.push(
+-          mapSessionSummaryToTaskMeta(summary, {
+-            workspacePath: scope.workspacePath,
+-            ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
+-            previous: previousByKey.get(buildSummaryIdentityKey(scope, summary.sessionId)),
+-          }),
+-        );
++      const scopeEpoch = storeState.logEpoch ?? null;
++      const scopeSeq = storeState.seq ?? null;
++      const cachedScope = scopeMetasCacheRef.current.get(sourceKey);
++      if (
++        cachedScope &&
++        cachedScope.epoch === scopeEpoch &&
++        cachedScope.seq === scopeSeq &&
++        cachedScope.bindingRevision === bindingRevision
++      ) {
++        metas.push(...cachedScope.metas);
++        continue;
+       }
++      const scopeMetas = store.getSessions().map((summary) =>
++        mapSessionSummaryToTaskMeta(summary, {
++          workspacePath: scope.workspacePath,
++          ...(scope.workspaceIdentity ? { workspaceIdentity: scope.workspaceIdentity } : {}),
++          previous: previousByKey.get(buildSummaryIdentityKey(scope, summary.sessionId)),
++        }),
++      );
++      scopeMetasCacheRef.current.set(sourceKey, {
++        epoch: scopeEpoch,
++        seq: scopeSeq,
++        bindingRevision,
++        metas: scopeMetas,
++      });
++      metas.push(...scopeMetas);
+     }
+     metas.sort((a, b) => compareZCodeTaskListItems(a, b, "updated"));
+     // 每个 tick 都全量重建 metas，即使内容完全没变（例如冷恢复把 seed 换成

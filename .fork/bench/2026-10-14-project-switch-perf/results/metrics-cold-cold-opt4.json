@@ -1,0 +1,65 @@
+{
+ "config": "cold-opt4",
+ "targets": [
+  "/home/kureshii/61cssb/parade-state",
+  "/home/kureshii/laymanswiki"
+ ],
+ "visits": [
+  {
+   "target": "parade-state",
+   "hoverWall": 1791940884845,
+   "wallClick": 1791940886027,
+   "triggerDeltaWall": 9056,
+   "timedOut": false,
+   "hoverToClickMs": 1182,
+   "killedAgents": 7,
+   "prepareStartOffsetMs": 8808,
+   "hostReadOffsetMs": -883,
+   "readPresentationDurMs": 0,
+   "spawnedAgent": true,
+   "prepareCount": 2,
+   "hostReadCount": 10
+  },
+  {
+   "target": "laymanswiki",
+   "hoverWall": 1791940904208,
+   "wallClick": 1791940905268,
+   "triggerDeltaWall": 8940,
+   "timedOut": false,
+   "hoverToClickMs": 1060,
+   "killedAgents": 8,
+   "prepareStartOffsetMs": 8736,
+   "hostReadOffsetMs": -861,
+   "readPresentationDurMs": 0,
+   "spawnedAgent": true,
+   "prepareCount": 2,
+   "hostReadCount": 9
+  }
+ ],
+ "summary": {
+  "triggerMs": [
+   9056,
+   8940
+  ],
+  "prepareStartOffsetMs": [
+   8808,
+   8736
+  ],
+  "hostReadOffsetMs": [
+   -883,
+   -861
+  ],
+  "readPresentationDurMs": [
+   0,
+   0
+  ],
+  "spawned": [
+   true,
+   true
+  ],
+  "killed": [
+   7,
+   8
+  ]
+ }
+}
