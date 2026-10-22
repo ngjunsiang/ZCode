@@ -124,7 +124,7 @@ Fork edits keep upstream's test gates green without evasion: fork-forced
 assertion updates are registered rows; vendor environment-dependent failures
 are document-and-skip (never --no-verify); affected suites run before
 landing, every time.
-- Expressed by: U34–U38, U52, U53, vitest conversions, ADR-013 addendum
+- Expressed by: U34–U36, U38, U53, U76 (new-files-gate exceptions), vitest conversions, ADR-013 addendum
 - Status: process intention, permanent.
 
 ### I-9 Every divergence is known and deprecatable

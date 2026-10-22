@@ -963,8 +963,28 @@ fork surfaces); `patch/3.16.1` stays pristine as a checkpoint.
    `WorkspaceSidebarFooterUsageSummary` moved out of `v4/`, still present),
    U66 (tray gained the unread-badge composition — idempotence guard re-anchored).
 
-**Verification.** `pnpm typecheck` + `pnpm lint` + affected suites run at the
-end of the replay; landed SHAs recorded in PATCHES.md rows + sync log when
-green. Push waits for the user's go (fork-no-upstream-push).
+**Outcome (executed same day).** 33 code commits replayed onto
+patch/3.16.2 (+ fmt normalization, one test retarget, U76). Replay-time
+findings beyond the triage: **U6** — upstream's "second settlement path" is
+`settleForModelFallback`, a separate deliberate flow; the fork guard needed
+no change. **U24** — upstream deleted the stale/workspace auto-archive flow
+entirely; cleanup hooks re-derived onto the four surviving lifecycle methods
+(`deleteTask` now rides `taskIndexSyncer.mutateSessionFacts`). **U19** —
+3.16.2 added `packages/desktop/src/scheduler` to the tsc project surface,
+exposing a latent unsoundness (conditional spread omitting `prompt` against a
+required-field type); fixed by making `prompt` optional to match the U18 wire
+schema — the 3.15.1 series never saw this because the scheduler file was not
+type-checked there. **U62** — the General settings section moved into
+`GeneralSectionContent`; wiring re-homed as props. **U34/U35** — upstream
+shipped its own 0004_project_execution_scopes + 0006_task_group_admissions;
+fork migration renumbered `0007_automation_action` (ledger 5→6). **U76
+(new row)** — upstream's new `newFilesRequireManagedModule` gate flags the
+fork-new files; registered per-file policy exceptions instead of adopting
+upstream directories as managed modules. Verification green: root + CLI
+typecheck, lint (0 errors; warnings = vendor baseline), affected suites
+(services 65; ui/shared/desktop 98; autoUpdater/env/browserDataManager 108 +
+U38 skip; build-time-config 7; CLI node:test 18+13), architecture check 0.
+Manual desktop smoke of the resume family remains outstanding (pre-existing
+debt). Push waits for the user's go (fork-no-upstream-push).
 
 **Not contributed upstream.** Fork-internal process.
