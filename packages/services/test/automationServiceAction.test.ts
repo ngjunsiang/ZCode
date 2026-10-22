@@ -147,8 +147,8 @@ describe("AutomationService resumeTurn 动作", () => {
     );
   });
 
-  it("历史行兼容：0004 补列后旧行读作 prompt；库重开迁移可重放", async () => {
-    // repo 惰性建库：先确保 schema 存在，再造「0004 已回退」的库（删 action 列 + 删 0004 账本行）。
+  it("历史行兼容：0007 补列后旧行读作 prompt；库重开迁移可重放", async () => {
+    // repo 惰性建库：先确保 schema 存在，再造「0007 已回退」的库（删 action 列 + 删 0007 账本行）。
     await repo.ensureReady();
     const raw = new DatabaseSync(dbPath);
     raw.exec(
@@ -160,9 +160,10 @@ describe("AutomationService resumeTurn 动作", () => {
         1, 0, 0, 0, 1, 1, 0, 'idle', 0, ${NOW}, ${NOW})`,
     );
     raw.exec("ALTER TABLE automations DROP COLUMN action");
-    raw.exec("DELETE FROM tasks_schema_migration WHERE id='0004_automation_action'");
+    // fork 迁移在 3.16.2 上重编号为 0007（上游已自带 0004/0006）。
+    raw.exec("DELETE FROM tasks_schema_migration WHERE id='0007_automation_action'");
     raw.close();
-    // 旧进程内标记不跨实例：新 repo 重开时账本缺 0004 → 迁移补列，旧行按 DEFAULT 'prompt' 回填。
+    // 旧进程内标记不跨实例：新 repo 重开时账本缺 0007 → 迁移补列，旧行按 DEFAULT 'prompt' 回填。
     const reopened = new AutomationRepo(dbPath);
     try {
       const legacy = await reopened.get("legacy-1");
