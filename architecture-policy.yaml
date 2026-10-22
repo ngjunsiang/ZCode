@@ -886,3 +886,24 @@ exceptions:
       - packages/ui/src/settings/DynamicWorkflowModeSetting.tsx
       - packages/ui/src/store/dynamicWorkflowAvailabilityStore.ts
     reason: Admitted upstream files edited only to let the user's dynamic workflow mode choice always win and keep the settings row visible; adopting packages/shared/src and packages/ui/src needs a separate module boundary refactor.
+  # fork U76（ADR-031）：ResumeTurn/Auto-Resume 家族的 fork-new 文件。这些文件在
+  # 3.15.1 系列已存在；上游 3.16.x 引入 newFilesRequireManagedModule 时按「新文件」
+  # 重新命中本规则。fork 纪律是真实逻辑住 fork-new 文件、上游文件只收 1–3 行锚点
+  # 接入（.fork/PATCHES.md F-series），不为接入而把上游目录整体登记为 managed 模块。
+  - id: fork-resume-family-files
+    rule: unmanaged-new-file
+    paths:
+      - apps/zcode-cli/packages/bootstrap/src/zcode-protocol-v4/commands/handlers/resume-turn.ts
+      - apps/zcode-cli/packages/core/src/runtime/methods/quota-resume-tail-sanitizer.ts
+      - packages/desktop/src/main/appRelaunch.ts
+      - packages/desktop/src/scheduler/misfire.ts
+      - packages/services/src/session/automationActionRules.ts
+      - packages/services/src/session/automationResumePolicy.ts
+      - packages/services/src/session/quotaResumeEntitlementRequest.ts
+      - packages/services/src/zcode-agent/autoResumeHostScheduler.ts
+      - packages/ui/src/lib/quotaBannerErrorClassification.ts
+      - packages/ui/src/lib/quotaResumeEntitlementOptions.ts
+      - packages/ui/src/v4/sessionQuotaResumeState.ts
+      - packages/ui/src/v4/useAutoResume.ts
+      - packages/ui/src/v4/useQuotaResume.ts
+    reason: Fork-local files that predate the 3.16.x new-files gate; isolated by design (I-9 divergence documentation, .fork/PATCHES.md F-series).
