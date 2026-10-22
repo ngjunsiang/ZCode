@@ -6634,7 +6634,7 @@ const zhCN: Record<string, string> = {
   "chat.quota.action.switchProvider": "切换供应商",
   "chat.quota.action.refresh": "刷新额度",
   // fork resumeTurn：配额中断会话的续跑入口。
-    "chat.quota.action.resume": "继续任务",
+  "chat.quota.action.resume": "继续任务",
   // fork Auto-Resume（spec-auto-resume.md U28）
   "chat.quota.action.autoResume": "自动恢复于 {time}",
   "chat.quota.autoResume.scheduled": "已调度自动恢复 {time} · 点击取消",

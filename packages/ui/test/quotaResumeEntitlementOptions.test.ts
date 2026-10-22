@@ -44,7 +44,9 @@ function viewWith(
 
 describe("buildQuotaResumeEntitlementOptions", () => {
   it("individual-coding-plan 会话：身份与侧栏一致（entitled access，非 start-plan planKind）", () => {
-    const view = viewWith([{ providerId: INDIVIDUAL_PROVIDER_ID, access: entitledIndividualAccess }]);
+    const view = viewWith([
+      { providerId: INDIVIDUAL_PROVIDER_ID, access: entitledIndividualAccess },
+    ]);
     const options = buildQuotaResumeEntitlementOptions(view, INDIVIDUAL_PROVIDER_ID);
 
     expect(options.enabled).toBe(true);
@@ -62,7 +64,9 @@ describe("buildQuotaResumeEntitlementOptions", () => {
   });
 
   it("mount 即取数（access 档）：横幅出现时不再依赖他人喂快照", () => {
-    const view = viewWith([{ providerId: INDIVIDUAL_PROVIDER_ID, access: entitledIndividualAccess }]);
+    const view = viewWith([
+      { providerId: INDIVIDUAL_PROVIDER_ID, access: entitledIndividualAccess },
+    ]);
     const options = buildQuotaResumeEntitlementOptions(view, INDIVIDUAL_PROVIDER_ID);
 
     // 回归锁：旧实现 refreshOnMount:false 且无共享者，快照永远为 null。
@@ -71,7 +75,9 @@ describe("buildQuotaResumeEntitlementOptions", () => {
   });
 
   it("cacheKey 与侧栏同源（entitled 指纹），跨组件共享同一缓存条目", () => {
-    const view = viewWith([{ providerId: INDIVIDUAL_PROVIDER_ID, access: entitledIndividualAccess }]);
+    const view = viewWith([
+      { providerId: INDIVIDUAL_PROVIDER_ID, access: entitledIndividualAccess },
+    ]);
     const options = buildQuotaResumeEntitlementOptions(view, INDIVIDUAL_PROVIDER_ID);
     const sidebarCacheKey = buildUsageEntitlementCacheKey({
       providerId: INDIVIDUAL_PROVIDER_ID,
@@ -86,7 +92,9 @@ describe("buildQuotaResumeEntitlementOptions", () => {
   });
 
   it("start-plan 会话：mode 正确投影为 start-plan，host 走 start-plan 凭据分支", () => {
-    const view = viewWith([{ providerId: START_PLAN_PROVIDER_ID, access: entitledStartPlanAccess }]);
+    const view = viewWith([
+      { providerId: START_PLAN_PROVIDER_ID, access: entitledStartPlanAccess },
+    ]);
     const options = buildQuotaResumeEntitlementOptions(view, START_PLAN_PROVIDER_ID);
 
     expect(options.enabled).toBe(true);

@@ -66,7 +66,8 @@ describe("classifySessionQuotaBannerError", () => {
   it("互不串扰：1308 归因 + 包装码 + 中性文案只命中 provider-limited", () => {
     const result = classifySessionQuotaBannerError({
       code: "unknown_error",
-      message: "[1308][Usage limit reached for 5 hour. Your limit will reset at 2026-10-12 19:47:45]",
+      message:
+        "[1308][Usage limit reached for 5 hour. Your limit will reset at 2026-10-12 19:47:45]",
       attributionProviderErrorCode: "1308",
     });
     expect(result.providerLimitedCode).toBe("1308");

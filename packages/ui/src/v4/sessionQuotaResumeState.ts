@@ -12,11 +12,7 @@
  *   （ADR-009）；Auto-Resume 不要求（ADR-015：step-1 失败 = 自动重试）。
  */
 import { GLM_QUOTA_BANNER_BUSINESS_CODES } from "../lib/providerBusinessError.js";
-import type {
-  RowsWindow,
-  SessionErrorInfo,
-  SessionPhase,
-} from "@zcode/shared/zcode-protocol-v4";
+import type { RowsWindow, SessionErrorInfo, SessionPhase } from "@zcode/shared/zcode-protocol-v4";
 
 // 与 CLI 守卫（bootstrap handlers/resume-turn.ts QUOTA_RESUME_PROVIDER_CODES）同源，
 // 两侧独立维护：UI 读 v4 snapshot，CLI 读 core projection。

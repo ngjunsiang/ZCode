@@ -180,7 +180,9 @@ export function useAutoResume(params: {
 
   if (unsupported === true || !params.enabled || !params.sessionId) return null;
   return {
-    scheduled: scheduled ? { automationId: scheduled.automationId, nextRunAt: scheduled.nextRunAt } : null,
+    scheduled: scheduled
+      ? { automationId: scheduled.automationId, nextRunAt: scheduled.nextRunAt }
+      : null,
     canSchedule: params.resetAt !== null,
     schedule,
     cancel,

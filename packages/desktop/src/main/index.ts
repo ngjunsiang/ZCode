@@ -2544,7 +2544,9 @@ app.whenReady().then(async () => {
   } else if (skipForceUpdateForLocalDevRuntime) {
     logger.info("[force-update] 本地 dev 构建（未打包）跳过远端强制升级检查");
   } else if (skipForceUpdateForGuardDisabledBuild) {
-    logger.info("[force-update] 构建期已关闭强更门（ZCODE_FORCE_UPDATE_GUARD=0），跳过远端强制升级检查");
+    logger.info(
+      "[force-update] 构建期已关闭强更门（ZCODE_FORCE_UPDATE_GUARD=0），跳过远端强制升级检查",
+    );
   }
   if (forceUpdateGuardResult.blocked) {
     return;

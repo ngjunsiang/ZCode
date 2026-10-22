@@ -6976,15 +6976,18 @@ const enUS: Record<string, string> = {
   "chat.quota.action.switchProvider": "Switch provider",
   "chat.quota.action.refresh": "Refresh quota",
   // fork resumeTurn：配额中断会话的续跑入口。
-    "chat.quota.action.resume": "Resume",
+  "chat.quota.action.resume": "Resume",
   // fork Auto-Resume（spec-auto-resume.md U27）
   "chat.quota.action.autoResume": "Auto-Resume at {time}",
   "chat.quota.autoResume.scheduled": "Auto-Resume {time} · click to cancel",
-  "chat.quota.autoResume.scheduledHint": "Scheduled to resume this session automatically when the usage limit resets. Click to cancel.",
-  "chat.quota.autoResume.noResetTime": "Reset time unknown — Auto-Resume is unavailable until the server provides one.",
+  "chat.quota.autoResume.scheduledHint":
+    "Scheduled to resume this session automatically when the usage limit resets. Click to cancel.",
+  "chat.quota.autoResume.noResetTime":
+    "Reset time unknown — Auto-Resume is unavailable until the server provides one.",
   "chat.quota.autoResume.failed": "Auto-Resume scheduling failed.",
   "chat.quota.autoResume.badge": "Auto-Resume",
-  "automations.resume.summary": "Bound-session resume: continues this session automatically when the usage limit resets.",
+  "automations.resume.summary":
+    "Bound-session resume: continues this session automatically when the usage limit resets.",
   "chat.quota.resume.failed": "Resume failed. Please try again.",
 
   // Permissions
