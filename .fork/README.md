@@ -101,7 +101,7 @@ executed on 3.15.1 — carry the debt forward.
 | branch | role (user-set 2026-10-15) | state |
 | --- | --- | --- |
 | `main` | pure upstream mirror | `3c5b2276` = vendor 3.16.2 |
-| `patch/3.16.2` | **stable working line** | port target 2026-10-23 (ADR-031) |
+| `patch/3.16.2` | **stable working line** | series ported + verified 2026-10-23 (ADR-031); U1–U76/N1–N23, unpushed |
 | `patch/3.16.1` | checkpoint | left pristine pure-vendor `0a1fc56d` |
 | `patch/3.15.1` | frozen stable (rollback) | series U1–U67/N1–N19 through PR #86 + ADR-028 via PR #87 on `origin` (local branch diverged: has unpushed charter `f52de4aa`, lacks PR #87 — reconcile on next touch) |
 | `patch/3.14.3` | frozen (rollback) | U1–U53-era series, retired expressions kept as-is |
