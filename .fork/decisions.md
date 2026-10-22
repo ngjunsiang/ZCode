@@ -757,3 +757,35 @@ the window open on KDE.
 
 **Not contributed upstream.** Same intake situation as ADR-022; lives as fork
 patches U66/N18 on `fix/tray-menu-stale-id-clicks` targeting patch/3.15.1.
+
+## ADR-030: Intent charter — .fork/INTENTS.md as the durable contract; PATCHES.md gains an Intent column  {2026-10-23}
+
+**Context.** The 2026-10-22 triage of upstream 3.16.1 (`0a1fc56d`) against the
+full series showed the replay model aging: six patches are superseded
+(U49/N15 terminal replay — upstream shipped its own bounded buffered emitter;
+U43/U47/U48/U52 — the `useWorkspaceTaskLists` data flow was deleted by the
+project-sidebar redesign; U57 — upstream shipped a richer updater state
+machine), while the resume family survives untouched with zero upstream code.
+Deciding port/adapt/drop per patch re-derives intent from patch text every
+version; that reasoning should be written down once.
+
+**Decision.** Adopt `.fork/INTENTS.md` (v1) as the durable contract: I-1…I-10
+plus candidates C-1 (multi-account, exp-02–04) and C-2 (web/mobile
+Auto-Resume parity). PATCHES.md rows carry an `Intent` column mapping every
+patch to the intentions it expresses. The sync loop becomes intention-first:
+on each vendor pull, check each intention against upstream — retire patches
+it now fulfills (keep the intention), re-express those it doesn't (adapt the
+old patch if anchors allow; rewrite from scratch for refactored/new code).
+I-5 is generalized (user) from the concrete streaming-storm criterion to
+"the client meets general frontend responsiveness and performance
+expectations" — enforcement is by measurement (.fork/bench/), re-express a
+patch only on a measured regression. I-10 (remote terminals show output) is
+recorded as a watch: upstream-covered since 3.16.1, no patch.
+
+**Charter provenance.** Inferred 2026-10-23 from the full series across all
+three lines (patch/3.15.1 U1–U67/N1–N19; hydra/patch/3.15.1-only
+U68–U75/N20–N23 + ADR-028/029 + exp-02–04; hydra/patch/3.15.3-only
+U54–U58/ADR-025), drafted by agent, edited/approved by user same day.
+
+**Not contributed upstream.** Charter and intent model are fork-internal
+process; nothing to contribute.
