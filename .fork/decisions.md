@@ -988,3 +988,57 @@ Manual desktop smoke of the resume family remains outstanding (pre-existing
 debt). Push waits for the user's go (fork-no-upstream-push).
 
 **Not contributed upstream.** Fork-internal process.
+
+## ADR-032: hydra 3.16.x port + C-1 promotion  {2026-10-23}
+
+**Context.** Hydra (the `zcode-hydra` test package built from the hydra dev
+line) is the user's daily driver — the exp multi-account series (exp-01..04)
+is load-bearing there, and the 3.15.x hydra line died with the 3.16.x vendor
+jump. The 2026-10-22 triage and ADR-031 had classified the exps "not ported —
+promotion = redesign, re-decide separately". The user promoted C-1 to
+intent-level work on 2026-10-23 and chose the two-stop branch shape
+(`hydra/patch/3.16.1` then `hydra/patch/3.16.2`) over the offered
+single-stop collapse, with full scope (all four exps + the AGENTS.md fork
+addendum).
+
+**Decision.**
+1. **C-1 → I-11** (INTENTS.md): multi-account is a first-class login
+   topology, hydra-only by design. The patch line stays minimal; the exp
+   journal in `.fork/hydra/RESEARCH.md` remains the research history.
+2. **`hydra/patch/3.16.1`** = the 41-commit shared series (from
+   `patch/3.16.2`) replayed commit-by-commit onto vendor `0a1fc56d`, plus the
+   promoted set U78–U83/N24–N25. `hydra/patch/3.16.2` = same content on
+   vendor `3c5b2276` (stop 2, built after stop-1 gates).
+3. **Replay SHAs are recorded here, not per-row**: the U1–U77 rows keep the
+   patch line's canonical `landed (3.16.2: …)` anchors; the hydra replay of
+   the shared series produced parallel SHAs (range
+   `9d1e2fc6..189e9fb4` on `hydra/patch/3.16.1`, one commit per source
+   commit, same order). Exp rows carry hydra SHAs directly.
+
+**Port-time findings (stop 1).**
+- The feared exp-03 sidebar redesign did not materialize: the account pill
+  and its icon cluster survived the 3.16.1 project-sidebar rework inside
+  `WorkspaceSidebarFooter.tsx`; the switcher re-anchored in place and only
+  `Root.tsx`'s surrounding remote-workspace JSX drifted.
+- `9bdcdd95` was re-derived, not cherry-picked: 3.16.x reads cached restore
+  tokens at two sites — `oauthService.restoreCachedSessionState`'s inline
+  dual-token batch read (self-contained local key consts; untouched, correct
+  under the registry because the mirror keeps legacy slots fresh) and the
+  repo's `loadCachedSessionTokens` decrypt-fallback reader (native at
+  3.16.x, absent in exp-01's base — the replay left it referencing removed
+  identifiers; re-pointed to the store's exported legacy key helpers,
+  `5059f4d5`).
+- U76's 3.16.1 replay resolution: the upstream
+  `workflow-mode-user-choice-unmanaged-edit` exception is 3.16.2-only vendor
+  content and was kept out; a stray closing conflict marker slipped into the
+  first resolution and broke YAML parsing (`5a218207` fixup).
+- The two exp-new files (`oauthAccountStore.ts`, `useAccountSwitcher.ts`)
+  hit the unmanaged-new-file gate → U82 per-file exceptions (U76
+  discipline).
+- exp-04: 3.16.x trimmed the 3.15.1-era login markup tests; only the
+  predicate test re-anchored.
+
+**Outcome (stop 1).** `hydra/patch/3.16.1` @ `9ffcfa82`+docs: replay 41
+commits (1 conflict) + 7 promoted commits + U82 + docs; root typecheck green;
+architecture check 0 after U82. Full gates + stop 2 recorded in the PATCHES
+sync log. Push waits for the user's go (fork-no-upstream-push).
