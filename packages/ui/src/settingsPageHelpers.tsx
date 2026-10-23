@@ -775,7 +775,7 @@ export function GeneralSectionContent({
                   ? `${intl.formatMessage({ id: "settings.closeToTrayUnavailable" })} ${intl.formatMessage({ id: "settings.closeToTrayGnomeHint" })}`
                   : intl.formatMessage({ id: "settings.closeToTrayUnavailable" })
                 : intl.formatMessage({
-              id: "settings.closeToTrayOnWindowsDescription",
+                    id: "settings.closeToTrayOnWindowsDescription",
                   })
             }
             control={
