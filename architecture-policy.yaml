@@ -882,3 +882,14 @@ exceptions:
       - packages/ui/src/v4/useAutoResume.ts
       - packages/ui/src/v4/useQuotaResume.ts
     reason: Fork-local files that predate the 3.16.x new-files gate; isolated by design (I-9 divergence documentation, .fork/PATCHES.md F-series).
+  # fork multi-account port (C-1 promotion, ADR-032): the promoted exp series
+  # ships two fork-new files (registry store + switcher hook). Fork discipline
+  # keeps real logic in fork-new files; their host directories are
+  # upstream-managed, so they get per-file exceptions instead of adopting the
+  # directories as managed modules.
+  - id: fork-multi-account-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/services/src/oauth/repo/oauthAccountStore.ts
+      - packages/ui/src/hooks/useAccountSwitcher.ts
+    reason: Fork-new files of the promoted multi-account feature (C-1, hydra lines only); isolated by design (I-9/I-11 divergence documentation, .fork/PATCHES.md N-series).
