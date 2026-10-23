@@ -1053,3 +1053,23 @@ ui/shared/desktop batch 14,626 passed / 12 skipped / 0 failed; CLI node:test
 18+13 (matches ADR-031); oxfmt clean on all 79 fork-touched files after
 normalizing 5 drifters. Stop 2 (`hydra/patch/3.16.2`) recorded in the PATCHES
 sync log. Push waits for the user's go (fork-no-upstream-push).
+
+**Outcome (stop 2, same day).** `hydra/patch/3.16.2` = `patch/3.16.2`
+(`d11d7610`) + the promoted set cherry-picked clean from stop 1 — 12 commits,
+zero conflicts (`26d895d9..41f63b5a`; Root.tsx and loginPage.test.ts applied
+without re-resolution because Root.tsx is identical across the 3.16.1/3.16.2
+vendor delta and the 3.16.2 test file carries the same trim). Only doc-level
+adaptation: per-branch SHAs in the U78–U84/N24–N25 rows. The fmt commit
+re-normalizes two shared-series files (`command.ts`
+`editUserQuery` indentation, `autoUpdaterReadyState.test.ts`) to what
+3.16.2's oxfmt actually wants — `patch/3.16.2`'s own copies still carry that
+pre-existing drift (never gated; vendor-baseline fmt failures are
+out-of-scope). Verification, honestly reported: root typecheck green; CLI
+typecheck 32/32 (turbo cache valid — the exp set adds no CLI changes and this
+base was typechecked at ADR-031); lint 0 errors (98 warnings = vendor
+baseline); `db:schema:check` green; architecture check 0; full
+services+ui/shared/desktop unit batch 18,250 passed / 21 skipped / 0 failed;
+CLI node:test 18+13; oxfmt clean on all 19 promoted-set files. Both hydra
+branches are LOCAL-ONLY — push waits for the user's go
+(fork-no-upstream-push), with `ZCODE_AFFECTED_TEST_BASE=origin/main` for the
+new-branch affected gate.
