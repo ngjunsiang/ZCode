@@ -882,4 +882,3 @@ exceptions:
       - packages/ui/src/v4/useAutoResume.ts
       - packages/ui/src/v4/useQuotaResume.ts
     reason: Fork-local files that predate the 3.16.x new-files gate; isolated by design (I-9 divergence documentation, .fork/PATCHES.md F-series).
->>>>>>> eccbdc76 (fork(policy): exempt fork-new resume-family files from the 3.16.x new-files gate (U76))
