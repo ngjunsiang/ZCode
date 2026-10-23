@@ -9,8 +9,10 @@ import { BIGMODEL_PROVIDER_ID, isCredentialDecryptError, ZAI_PROVIDER_ID } from 
 import type { ICredentialService } from "../../credential/credential.js";
 import { createServiceLogger } from "../../logger/serviceLogger.js";
 import {
+  LEGACY_ZCODE_JWT_KEY,
   OAuthAccountStore,
   deriveAccountId,
+  legacyAccessTokenKey,
   legacyUserInfoKey,
   type OAuthAccountRef,
 } from "./oauthAccountStore.js";
@@ -233,7 +235,7 @@ export class OAuthCredentialRepo {
   ): Promise<{ key: string; value: string }[] | null> {
     try {
       return await Promise.all(
-        [ZCODE_JWT_TOKEN_KEY, accessTokenKey(provider)].map(async (key) => ({
+        [LEGACY_ZCODE_JWT_KEY, legacyAccessTokenKey(provider)].map(async (key) => ({
           key,
           value: (await this.credentialService.load(key))?.trim() ?? "",
         })),
