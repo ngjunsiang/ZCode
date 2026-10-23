@@ -49,7 +49,7 @@ CREATE TABLE automations (
         last_error TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
-      , project_id TEXT, host_id TEXT, additional_directories TEXT);
+      , project_id TEXT, host_id TEXT, additional_directories TEXT, action TEXT NOT NULL DEFAULT 'prompt');
 
 CREATE TABLE hosts (
  host_id TEXT PRIMARY KEY, kind TEXT NOT NULL, target_json TEXT, membership_id TEXT,
