@@ -269,3 +269,16 @@ completion still closes via the oauthSuccessSeq effect (status must be
 
 Verified: loginPage/loginDialogProviders/loginFailureCancel 13/13,
 typecheck (pipefail), oxlint clean on changed files.
+
+## 2026-10-23 — 3.16.x port (C-1 promotion; ADR-032)
+
+The exp series left experiment status: the user promoted C-1 → I-11 and the
+series is now the manifest-registered U78–U83/N24–N25 set on the hydra
+3.16.x lines (`.fork/PATCHES.md`). This journal stays as the research
+history; port outcomes live in ADR-032 and the PATCHES sync log. Port-time
+surprises worth remembering: the 3.16.1 sidebar rework did NOT delete the
+account pill (it survived inside `WorkspaceSidebarFooter.tsx` — the handoff
+plan's redesign expectation was wrong); 3.16.x restored cached tokens at a
+second, self-contained site (`oauthService`'s inline dual-token read), so the
+`9bdcdd95` registry adaptation only needed to cover the repo's
+decrypt-fallback reader.
