@@ -20,6 +20,8 @@ with the branch checkout.
 | `dev.sh` | **launch entrypoint, Linux/macOS**: `--check` / `--isolated` / `--stack` / `--app` / `--own-deeplink` (session-scoped zcode:// handler so OAuth login completes inside dev; auto-removed on exit; `--deeplink-cleanup` = manual repair) / `--full-setup` / `--no-setup` / `--no-agent-cache` |
 | `dev.ps1` | **launch entrypoint, Windows** (same semantics; `-Stack` / `-App` / `-OwnDeeplink` / `-DeeplinkCleanup` etc.). Deeplink + overall: untested — first Windows run is its smoke test |
 | `drafts/` | investigated-but-unlanded patch write-ups (e.g. `membership-cache-3.15.1.md`) |
+| `plan-hydra-316-port.md` | **handoff plan: hydra dev line onto 3.16.1/3.16.2** (C-1 promotion; next session's entry point) |
+| `INTENTS.md` | **the intent charter (ADR-030)**: the durable contract; every patch is a per-version expression of an intention — read before touching PATCHES.md |
 | `PATCHES.md` | **the manifest**: every fork edit to an upstream file, with anchors and re-apply notes |
 | `decisions.md` | decision log (ADR-style); defaults chosen without user input are marked |
 | `spec-resume-turn.md` | product spec (per AGENTS.md spec-first rule) |
