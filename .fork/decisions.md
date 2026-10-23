@@ -758,6 +758,90 @@ the window open on KDE.
 **Not contributed upstream.** Same intake situation as ADR-022; lives as fork
 patches U66/N18 on `fix/tray-menu-stale-id-clicks` targeting patch/3.15.1.
 
+## ADR-028: Auto-Resume rule-8 scheduling moves host-side, event-driven  {2026-10-17}
+
+**Context.** Second live failure (2026-10-17 17:41–18:31, investigated same
+evening): quota exhausted across three sessions plus a dwf session; boundary
+~18:31; ZERO `createAutomation` RPCs all day → no resumeTurn row ever existed →
+the U67/N19 dispatch fix never reached (correctly: no 额度预检 warn lines).
+Root cause is structural, not incidental: ADR-026's default-on auto-scheduling
+lives in `useAutoResume`, which only evaluates when a quota banner renders on a
+MOUNTED pane. (1) Scheduler-dispatched job sessions are never mounted (the
+automation creates and runs them with no window). (2) Phone/web-remote-driven
+sessions render no automation-capable pane at all (web-remote has no automation
+RPC — the hook hides entirely). (3) Diagnostics: the renderer's production
+logging is compiled out, so the auto-effect's bail reasons are invisible. The
+U67 investigation also left a deferred follow-up: the host's fire-time
+entitlement pre-check still calls `getEntitlementSnapshot()` no-arg — the only
+such caller — which deterministically resolves `not_configured` (the
+`resolveApiAuthorization` fallback is wired nowhere); only N19's
+undefined⇒dispatch semantics keep it benign.
+
+**Decision.** Detection moves to the host process as an event-driven service:
+a fork-new `autoResumeHostScheduler` (services layer, wired by
+`createLocalServices` beside the task-index syncer) subscribes to
+`onSessionTerminalEvent` — the syncer's true non-terminal→terminal phase diff,
+which restarts never replay — and on `turn.failed` reads the session snapshot
+(existing-only), classifies `projection.lastError` against the quota code
+family, resolves a renderer-parity PINNED entitlement request (session model's
+`providerId` + registry static account access; the quota provider resolves the
+current account via the already-wired `accountRequestAuthService`), computes
+the boundary via `nextEntitlementResetAt`, and creates rule-2's automation
+through the EXISTING `automationService.create` — same service, validation,
+cap, single write path; `AutomationRepo` stays the row owner. Boundary unknown
+(quota-less/failed fetch) does NOT cancel scheduling: fall back to a probe-able
+~15-min schedule and let fire-time machinery converge (follow-the-server
+re-arm; quota-less dispatch per N19; a re-failing quota turn produces a fresh
+failure event that schedules the next probe). Cancel collapses to row deletion
++ structural per-failure semantics: no new transition → no re-create, across
+restarts; the ADR-026 suppression store and per-mount refs are deleted. The
+renderer keeps the manual button/chip and polls the automation list slowly
+while a banner is up so host-created rows surface. Double-create is closed at
+the owner: `AutomationRepo.create` returns the existing active/paused row for
+the same target+workspace instead of inserting (inside the existing
+`BEGIN IMMEDIATE`), making concurrent observers (multi-window hosts, racing
+manual clicks) idempotent. The deferred U67 follow-up lands with this:
+`dispatchResumeTurnRun` pins the same request (provider derived from the bound
+session at fire time), so exhausted readings carry a real `nextResetTime` to
+follow. Setting `autoResumeEnabled` is read at failure time by the detector
+(default on; read failure defaults on).
+
+**Deliberately not built.** Renderer-side notifications/toasts for
+host-initiated auto-creates (no owning renderer; the chip + Settings card are
+the surfaces); pushing automation-list change events to renderers (slow poll
+only while a banner is up is bounded and keeps automation list read-only);
+storing the provider pin on the automation row (overloads row semantics —
+fire-time re-derives from the session); suppression of dwf sessions (their
+quota-classified failures are treated uniformly; CLI guards arbitrate —
+non-resumable shapes settle obsolete and delete silently); detection for
+agents running on remote machines from THIS desktop (detection rides
+`createLocalServices` wherever the agent actually runs; remote-machine hosts
+running this fork get it via their own wiring).
+
+**Verification (real results, 2026-10-17).** Root `pnpm typecheck` 0 errors
+(one iteration: detector create params needed the service-level
+`recurring:false`); `pnpm lint` 0 errors / 64 warnings = unchanged baseline
+(one iteration: useless spread in the new test); `pnpm
+architecture:check --changed` 0 violations. Services vitest:
+autoResumeHostScheduler 18/18 (detector matrix: boundary create with +1-min
+margin / probe fallback on pin failure + no-provider / setting off + read
+default-on / readSession failure / create failure no-retry / in-flight
+serialization / post-dispose inert; repo idempotency incl. terminal-row
+re-create + prompt-action isolation; pin resolver branches), policy suite
+extended with the classifier matrix (22/22 with the action suite combined);
+adjacent suites green: tasksStartupPreparation + tasksDatabaseMigration +
+terminalOutputReplay 22/22. UI vitest: useAutoResume 10/10 (manual-only
+matrix, no-auto-create regression, slow-poll fake-timers coverage); adjacent
+quota suites (sessionQuotaResumeState / quotaResumeEntitlementOptions /
+quotaBannerErrorClassification) 26/26. Desktop dogfood pending: the next
+natural quota exhaustion exercises end-to-end scheduling with no pane mounted
+(log signature `automation.resume.auto_scheduled` in the host log + a
+resumeTurn row in tasks-index).
+
+**Not contributed upstream.** Same intake situation as ADR-022; lives as fork
+patches U68–U71 / N20–N21 (+ N6/N17 amended, N16 removed) on
+`fix/auto-resume-host-scheduling/3.15.1` targeting patch/3.15.1.
+
 ## ADR-030: Intent charter — .fork/INTENTS.md as the durable contract; PATCHES.md gains an Intent column  {2026-10-23}
 
 **Context.** The 2026-10-22 triage of upstream 3.16.1 (`0a1fc56d`) against the
