@@ -1038,7 +1038,18 @@ addendum).
 - exp-04: 3.16.x trimmed the 3.15.1-era login markup tests; only the
   predicate test re-anchored.
 
-**Outcome (stop 1).** `hydra/patch/3.16.1` @ `9ffcfa82`+docs: replay 41
-commits (1 conflict) + 7 promoted commits + U82 + docs; root typecheck green;
-architecture check 0 after U82. Full gates + stop 2 recorded in the PATCHES
+**Outcome (stop 1).** `hydra/patch/3.16.1`: replay 41 commits (1 conflict) +
+7 promoted commits + U82 + ADR-032 docs + U84 + fmt (`d32880a1`).
+Verification, honestly reported: root typecheck green; CLI typecheck 32/32
+via inner turbo (no inner pnpm install); lint 0 errors (98 warnings = vendor
+baseline); `db:schema:check` green on both baselines (U77's replayed baseline
+is correct at 3.16.1 — the vendor delta did not touch the migrations module,
+so 0007 is right at both versions); architecture check 0 after U82; services
+suite 3511 tests → 2 ledger-assertion failures in the U34/U35 pattern's
+missed third sibling (`remoteSchemaMigrations.test.ts`, fixed as U84 — note
+`patch/3.16.2` still carries that stale assertion, masked by the whole-suite
+push rule; flagged for the next patch-line touch) then all green; full
+ui/shared/desktop batch 14,626 passed / 12 skipped / 0 failed; CLI node:test
+18+13 (matches ADR-031); oxfmt clean on all 79 fork-touched files after
+normalizing 5 drifters. Stop 2 (`hydra/patch/3.16.2`) recorded in the PATCHES
 sync log. Push waits for the user's go (fork-no-upstream-push).
