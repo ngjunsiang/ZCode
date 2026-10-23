@@ -1,3 +1,5 @@
+> **EXECUTED 2026-10-23/24 (ADR-032).** Both stops built and gate-green: `hydra/patch/3.16.1` (41-commit replay + promoted set, 1 conflict) and `hydra/patch/3.16.2` (12-commit clean pick onto `patch/3.16.2`). The feared exp-03 sidebar redesign was NOT needed — the account pill survived the project-sidebar rework inside `WorkspaceSidebarFooter.tsx`. `9bdcdd95` was re-derived for 3.16.x's dual-site restore. Findings/outcome: ADR-032 + the sync log below. Branches are LOCAL-ONLY — push on user go.
+
 # Plan: hydra dev line onto 3.16.x — hydra/patch/3.16.1 → hydra/patch/3.16.2
 
 **Handoff written 2026-10-23 (session after the ADR-031 port). Execute in a
