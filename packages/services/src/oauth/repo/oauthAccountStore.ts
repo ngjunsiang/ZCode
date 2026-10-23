@@ -395,7 +395,10 @@ export class OAuthAccountStore {
     }
     await this.credentialService.save(accountSlotKey(ref, "access_token"), tokenSet.accessToken);
     if (tokenSet.refreshToken) {
-      await this.credentialService.save(accountSlotKey(ref, "refresh_token"), tokenSet.refreshToken);
+      await this.credentialService.save(
+        accountSlotKey(ref, "refresh_token"),
+        tokenSet.refreshToken,
+      );
     } else {
       await this.credentialService.delete(accountSlotKey(ref, "refresh_token"));
     }
@@ -507,7 +510,9 @@ export class OAuthAccountStore {
       return;
     }
     // 兼容旧流程：条目尚未建立（异常时序）时至少保持 legacy 指针正确。
-    log.warn(undefined, "activateProvider: 注册表无该 provider 条目，仅写 legacy 指针", { provider });
+    log.warn(undefined, "activateProvider: 注册表无该 provider 条目，仅写 legacy 指针", {
+      provider,
+    });
     await this.credentialService.save(LEGACY_ACTIVE_PROVIDER_KEY, provider);
   }
 

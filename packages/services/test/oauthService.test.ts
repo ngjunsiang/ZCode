@@ -34,9 +34,8 @@ function buildDesktopOAuthLoginRedirectUri(origin: string): string {
 
 const PRODUCTION_DESKTOP_OAUTH_LOGIN_REDIRECT_URI =
   buildDesktopOAuthLoginRedirectUri("https://zcode.z.ai/");
-const TEST_DESKTOP_OAUTH_LOGIN_REDIRECT_URI = buildDesktopOAuthLoginRedirectUri(
-  "https://zcode.z.ai/",
-);
+const TEST_DESKTOP_OAUTH_LOGIN_REDIRECT_URI =
+  buildDesktopOAuthLoginRedirectUri("https://zcode.z.ai/");
 
 // Windows 机器上设置了 ZAI_TEST_OAUTH_ORIGIN 等环境变量，会覆盖测试预期的 test 端点值
 // 过滤掉这些可能污染测试的环境变量
@@ -1011,9 +1010,7 @@ describe("oauthService", () => {
     const { authorizeUrl } = await service.startOAuth(ZAI_PROVIDER_ID);
     const parsed = new URL(authorizeUrl);
 
-    expect(parsed.origin + parsed.pathname).toBe(
-      "https://chat.z.ai/api/oauth/authorize",
-    );
+    expect(parsed.origin + parsed.pathname).toBe("https://chat.z.ai/api/oauth/authorize");
     expect(parsed.searchParams.get("redirect_uri")).toBe(TEST_DESKTOP_OAUTH_LOGIN_REDIRECT_URI);
     expect(parsed.searchParams.get("client_id")).toBe("client_P8X5CMWmlaRO9gyO-KSqtg");
   });
@@ -1152,9 +1149,7 @@ describe("oauthService", () => {
     const { authorizeUrl } = await service.startOAuth(ZAI_PROVIDER_ID);
     const parsed = new URL(authorizeUrl);
 
-    expect(parsed.origin + parsed.pathname).toBe(
-      "https://chat.z.ai/api/oauth/authorize",
-    );
+    expect(parsed.origin + parsed.pathname).toBe("https://chat.z.ai/api/oauth/authorize");
     expect(parsed.searchParams.get("client_id")).toBe("client_P8X5CMWmlaRO9gyO-KSqtg");
   });
 
@@ -2257,14 +2252,16 @@ describe("oauthService", () => {
       accountId: "account-a",
     });
     // 解冻 A 的冻结副本：access token 与共享 JWT 都回到 A 的值
-    expect(await credentialServiceStub.load("oauth:bigmodel:access_token")).toBe("a-business-token");
-    expect(await credentialServiceStub.load("zcodejwttoken")).toBe("a-zcode-jwt");
-    expect(JSON.parse((await credentialServiceStub.load("oauth:bigmodel:user_info"))!)).toMatchObject(
-      {
-        id: "account-a",
-        username: "Account A",
-      },
+    expect(await credentialServiceStub.load("oauth:bigmodel:access_token")).toBe(
+      "a-business-token",
     );
+    expect(await credentialServiceStub.load("zcodejwttoken")).toBe("a-zcode-jwt");
+    expect(
+      JSON.parse((await credentialServiceStub.load("oauth:bigmodel:user_info"))!),
+    ).toMatchObject({
+      id: "account-a",
+      username: "Account A",
+    });
     await expect(service.getActiveProvider()).resolves.toBe(BIGMODEL_PROVIDER_ID);
   });
 
@@ -2300,9 +2297,9 @@ describe("oauthService", () => {
       displayName: "Account B",
     });
 
-    await expect(
-      service.switchAccount(BIGMODEL_PROVIDER_ID, "account-missing"),
-    ).rejects.toThrow(/切换目标账号不存在/);
+    await expect(service.switchAccount(BIGMODEL_PROVIDER_ID, "account-missing")).rejects.toThrow(
+      /切换目标账号不存在/,
+    );
   });
 
   it("BigModel zcode token 响应缺少 token 时中止登录", async () => {
