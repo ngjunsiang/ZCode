@@ -79,7 +79,7 @@ SEA 可以在一个 host 上下载并注入其它 target 的官方 Node.js binar
 
 ## Node 24 SEA 基线
 
-ZCode 以 Node.js `24.14.0` 作为本仓库开发、构建和发布基线。Node 26 的原生 `node --build-sea` 路径在生产老设备上兼容性不足，本轮回退到 Node 24 LTS 兼容路径；仓库 `engines.node` 要求 `>=24.14.0 <25`，SEA 发布产物必须嵌入同版本 Node 24 运行时。
+ZCode 以 Node.js `24.22.1` 作为本仓库开发、构建和发布基线。Node 26 的原生 `node --build-sea` 路径在生产老设备上兼容性不足，本轮回退到 Node 24 LTS 兼容路径；仓库 `engines.node` 要求 `>=24.22.1 <25`，SEA 发布产物必须嵌入同版本 Node 24 运行时。
 
 SEA 构建路径是 `node --experimental-sea-config <config>` 生成 preparation blob，然后把该 blob 用 `postject` 注入目标平台官方 Node.js 二进制。脚本必须继续从官方 Node release 下载同版本目标二进制，或接受用户用 `--node-binary <target>=<path>` 显式提供的二进制。
 

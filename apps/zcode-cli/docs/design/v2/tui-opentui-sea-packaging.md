@@ -24,7 +24,7 @@ package names from the intended source. It keeps ZCode on the existing Node.js
 OpenTUI work that depends on Node's experimental `node:ffi` is not a runtime
 baseline for this migration.
 
-The CLI SEA entry remains CommonJS. zcode currently targets Node.js 24.14.0, and
+The CLI SEA entry remains CommonJS. zcode currently targets Node.js 24.22.1, and
 that version executes the injected SEA main script as CommonJS. OpenTUI and
 `@zcode/tui` remain ESM packages, so the CJS entry must load them with dynamic
 `import()`.
