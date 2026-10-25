@@ -1073,3 +1073,57 @@ CLI node:test 18+13; oxfmt clean on all 19 promoted-set files. Both hydra
 branches are LOCAL-ONLY — push waits for the user's go
 (fork-no-upstream-push), with `ZCODE_AFFECTED_TEST_BASE=origin/main` for the
 new-branch affected gate.
+
+## ADR-033: Stay on Electron 41 — accept the certifi CA exposure; heightened exploit watch  {Confirmed — user-selected 2026-10-25}
+
+**Context.** The eMudhra/emSign intermediate-CA key compromise (published
+2026-10-17/20; keys effectively public since 2025-04 via flawed key
+generation) leaves every client whose *bundled* CA store still trusts the
+compromised chains open to on-path MITM; revocation is no safety net for
+non-browser clients. The machine-level sweep
+(`~/sysinfo/incidents/2026-10-25-emudhra-ca-compromise.md`, checker-host
+verified) marked ZCode desktop **Electron 41.0.3** — in both the `zcoder`
+daily driver and the `zcode-hydra` test build — **vulnerable,
+upstream-gated**: the 41 line was never patched upstream, and the first
+fixed Electron versions are 42.11.16 / 43.8.1 / 44.9.1. Upstream
+zai-org/ZCode still pins 41.0.3 (checked 2026-10-25 via GitHub API), so no
+vendor pull delivers the fix either.
+
+**Recon (2026-10-25).** A complete migration probe exists and is kept:
+branch `recon/electron-42` (worktree `../ZCode-hydra-recon-e42`, commit
+`64fbf7df`), findings in `.fork/drafts/electron-42-recon.md`. Bottom line:
+the API-level migration is small (3-file pin diff; typecheck/lint/29 targeted
+unit tests green; Node stays on 24.x so native ABI and the
+`ELECTRON_RUN_AS_NODE` agent bundle are untouched), and the real cost is
+install-flow rework (42 removed the postinstall binary download — bootstrap,
+CI, and the zcode-hydra PKGBUILD need an explicit install step) plus runtime
+re-validation (wdio service matrix, ARMS Crashpad parsing, playwright-core
+pin, KDE tray matrix) — and permanent upstream divergence until upstream
+moves.
+
+**Decision.** Stay on Electron 41.0.3; accept the exposure; treat this vuln
+class at heightened alert. The maintainer explicitly declines ownership of
+an Electron major bump for now.
+
+**Watch posture (alert level: elevated).**
+
+| Signal | Source | Action |
+|---|---|---|
+| Electron security release **backporting the eMudhra/emSign trust update to 41.x** — none exists today (incident report: the 41 line was never patched); check every Electron security post, treat as unlikely | electronjs.org release feed / Electron GHSA | pin bump in-major (low friction; note 41.10.7 point releases do NOT carry this fix) |
+| Public exploit / KEV entry or attack tooling using eMudhra/emSign chains against Electron/bundled-store clients | CISA KEV, GitHub advisories, security press | escalate: execute the recon migration map on the hydra line out of band |
+| eMudhra/emSign event developments (newly named chains, revocation/trust-store changes) | emudhra.we-have-a-problem.com, CT monitoring | re-probe the running app: checker-host fetch returning HTTP 200 = still exposed; TLS error = safe (package/lockfile scans cannot see compiled-in roots) |
+| upstream bumps to ≥42.11.16 | zai-org/ZCode `packages/desktop/package.json` | ride the vendor pull; the recon checklist enumerates the validation debt |
+
+**Detection.** The Fri 21:30 PKGBUILD-review and Sat 10:00 vulnscan
+automations carry this item via `~/sysinfo/SECURITY-INVENTORY.md` R14; the
+checker-host probe tests the compiled-in store directly. The recon pin
+(42.11.18) is ≥ the first fixed version (42.11.16), so the preserved map
+targets a fixed runtime.
+
+**Revisit triggers.** Any watch action firing; an upstream bump; or the
+maintainer choosing to take on the maintenance burden. In every case start
+from the recon map — do not re-derive it.
+
+**Alternatives rejected.** Adopt 42 now (maintenance ownership declined);
+patch CA trust in-app (new unvalidated divergence surface); rely on 41.x
+point releases (per the threat model the fix is not backported).
