@@ -142,6 +142,26 @@ create/subscribe races must never silently drop the initial prompt.
   own buffered replay emitter (same design, bounded at 1MB).
 - Status: upstream-covered; watch on remote-terminal changes.
 
+### I-12 The Node runtime pin stays on a bundled-CA-fixed Node
+Dev, gates, and the SEA release all execute on the pinned Node, whose bundled
+CA store is compiled in — lockfile scanners cannot see it. The pin must
+always resolve to a Node build carrying the eMudhra/emSign intermediate-CA
+trust update (24.x ≥ 24.22.1, 26.x ≥ 26.12.1 — the 2026-10-25 sysadmin
+incident's first-fixed set). On every vendor pull: re-check upstream's pins
+(`mise.toml`, `apps/zcode-cli` engines/`.node-version`/`.nvmrc`, e2e
+Dockerfiles, `third-party/runtime` ledger); anything below the threshold is
+replaced with the latest fixed release of the same major line without
+waiting for upstream, and the matching SEA license material is registered
+before the next `build:sea`. Historical test-log version mentions are
+records, never edited. Sunset: upstream's own pins are ≥ threshold (retire
+the patch, keep the per-pull check), or Node redesigns the bundled trust
+store so the class is moot. Provenance: sysadmin
+`incidents/2026-10-25-emudhra-ca-compromise.md`; the Electron leg of the
+same event is ADR-033.
+- Expressed by: U86
+- Status: applied to the 3.16.1/3.16.2 patch+hydra lines 2026-10-26 (mise
+  24.14.0 was checker-host confirmed vulnerable; 24.22.1 verified in-gates).
+
 ## Candidates (not yet intentions — decide)
 - C-1 Multi-account support (coexisting logins, account switcher,
   flash-close fix; exp-02–04, hydra-only). The 3.16.1 sidebar rework deleted
