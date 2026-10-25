@@ -196,7 +196,7 @@ Implementation and page examples: [Gen UI contract](packages/ui/src/gen-ui/CONTR
 
 The development and debugging steps in this guide target the `feat/ui-plugin` branch in each repository. **This branch is not yet available in the public ZCode repository.** Once it is ready, check it out from the repository above to test plugins with the host.
 
-The shell examples below target macOS / Linux. Replace both paths with your own checkouts. Use Node.js `24.14.0` and pnpm `10.33.2`. On Windows, set the same environment variables in PowerShell, then run the corresponding `pnpm` / `node` commands in each repository.
+The shell examples below target macOS / Linux. Replace both paths with your own checkouts. Use Node.js `24.22.1` and pnpm `10.33.2`. On Windows, set the same environment variables in PowerShell, then run the corresponding `pnpm` / `node` commands in each repository.
 
 ### First Run: Install Only the Plugins You Want to Test
 
