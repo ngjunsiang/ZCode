@@ -963,9 +963,29 @@ fork surfaces); `patch/3.16.1` stays pristine as a checkpoint.
    `WorkspaceSidebarFooterUsageSummary` moved out of `v4/`, still present),
    U66 (tray gained the unread-badge composition — idempotence guard re-anchored).
 
-**Verification.** `pnpm typecheck` + `pnpm lint` + affected suites run at the
-end of the replay; landed SHAs recorded in PATCHES.md rows + sync log when
-green. Push waits for the user's go (fork-no-upstream-push).
+**Outcome (executed same day).** 33 code commits replayed onto
+patch/3.16.2 (+ fmt normalization, one test retarget, U76). Replay-time
+findings beyond the triage: **U6** — upstream's "second settlement path" is
+`settleForModelFallback`, a separate deliberate flow; the fork guard needed
+no change. **U24** — upstream deleted the stale/workspace auto-archive flow
+entirely; cleanup hooks re-derived onto the four surviving lifecycle methods
+(`deleteTask` now rides `taskIndexSyncer.mutateSessionFacts`). **U19** —
+3.16.2 added `packages/desktop/src/scheduler` to the tsc project surface,
+exposing a latent unsoundness (conditional spread omitting `prompt` against a
+required-field type); fixed by making `prompt` optional to match the U18 wire
+schema — the 3.15.1 series never saw this because the scheduler file was not
+type-checked there. **U62** — the General settings section moved into
+`GeneralSectionContent`; wiring re-homed as props. **U34/U35** — upstream
+shipped its own 0004_project_execution_scopes + 0006_task_group_admissions;
+fork migration renumbered `0007_automation_action` (ledger 5→6). **U76
+(new row)** — upstream's new `newFilesRequireManagedModule` gate flags the
+fork-new files; registered per-file policy exceptions instead of adopting
+upstream directories as managed modules. Verification green: root + CLI
+typecheck, lint (0 errors; warnings = vendor baseline), affected suites
+(services 65; ui/shared/desktop 98; autoUpdater/env/browserDataManager 108 +
+U38 skip; build-time-config 7; CLI node:test 18+13), architecture check 0.
+Manual desktop smoke of the resume family remains outstanding (pre-existing
+debt). Push waits for the user's go (fork-no-upstream-push).
 
 **Not contributed upstream.** Fork-internal process.
 
@@ -1018,7 +1038,92 @@ addendum).
 - exp-04: 3.16.x trimmed the 3.15.1-era login markup tests; only the
   predicate test re-anchored.
 
-**Outcome (stop 1).** `hydra/patch/3.16.1` @ `9ffcfa82`+docs: replay 41
-commits (1 conflict) + 7 promoted commits + U82 + docs; root typecheck green;
-architecture check 0 after U82. Full gates + stop 2 recorded in the PATCHES
+**Outcome (stop 1).** `hydra/patch/3.16.1`: replay 41 commits (1 conflict) +
+7 promoted commits + U82 + ADR-032 docs + U84 + fmt (`d32880a1`).
+Verification, honestly reported: root typecheck green; CLI typecheck 32/32
+via inner turbo (no inner pnpm install); lint 0 errors (98 warnings = vendor
+baseline); `db:schema:check` green on both baselines (U77's replayed baseline
+is correct at 3.16.1 — the vendor delta did not touch the migrations module,
+so 0007 is right at both versions); architecture check 0 after U82; services
+suite 3511 tests → 2 ledger-assertion failures in the U34/U35 pattern's
+missed third sibling (`remoteSchemaMigrations.test.ts`, fixed as U84 — note
+`patch/3.16.2` still carries that stale assertion, masked by the whole-suite
+push rule; flagged for the next patch-line touch) then all green; full
+ui/shared/desktop batch 14,626 passed / 12 skipped / 0 failed; CLI node:test
+18+13 (matches ADR-031); oxfmt clean on all 79 fork-touched files after
+normalizing 5 drifters. Stop 2 (`hydra/patch/3.16.2`) recorded in the PATCHES
 sync log. Push waits for the user's go (fork-no-upstream-push).
+
+**Outcome (stop 2, same day).** `hydra/patch/3.16.2` = `patch/3.16.2`
+(`d11d7610`) + the promoted set cherry-picked clean from stop 1 — 12 commits,
+zero conflicts (`26d895d9..41f63b5a`; Root.tsx and loginPage.test.ts applied
+without re-resolution because Root.tsx is identical across the 3.16.1/3.16.2
+vendor delta and the 3.16.2 test file carries the same trim). Only doc-level
+adaptation: per-branch SHAs in the U78–U84/N24–N25 rows. The fmt commit
+re-normalizes two shared-series files (`command.ts`
+`editUserQuery` indentation, `autoUpdaterReadyState.test.ts`) to what
+3.16.2's oxfmt actually wants — `patch/3.16.2`'s own copies still carry that
+pre-existing drift (never gated; vendor-baseline fmt failures are
+out-of-scope). Verification, honestly reported: root typecheck green; CLI
+typecheck 32/32 (turbo cache valid — the exp set adds no CLI changes and this
+base was typechecked at ADR-031); lint 0 errors (98 warnings = vendor
+baseline); `db:schema:check` green; architecture check 0; full
+services+ui/shared/desktop unit batch 18,250 passed / 21 skipped / 0 failed;
+CLI node:test 18+13; oxfmt clean on all 19 promoted-set files. Both hydra
+branches are LOCAL-ONLY — push waits for the user's go
+(fork-no-upstream-push), with `ZCODE_AFFECTED_TEST_BASE=origin/main` for the
+new-branch affected gate.
+
+## ADR-033: Stay on Electron 41 — accept the certifi CA exposure; heightened exploit watch  {Confirmed — user-selected 2026-10-25}
+
+**Context.** The eMudhra/emSign intermediate-CA key compromise (published
+2026-10-17/20; keys effectively public since 2025-04 via flawed key
+generation) leaves every client whose *bundled* CA store still trusts the
+compromised chains open to on-path MITM; revocation is no safety net for
+non-browser clients. The machine-level sweep
+(`~/sysinfo/incidents/2026-10-25-emudhra-ca-compromise.md`, checker-host
+verified) marked ZCode desktop **Electron 41.0.3** — in both the `zcoder`
+daily driver and the `zcode-hydra` test build — **vulnerable,
+upstream-gated**: the 41 line was never patched upstream, and the first
+fixed Electron versions are 42.11.16 / 43.8.1 / 44.9.1. Upstream
+zai-org/ZCode still pins 41.0.3 (checked 2026-10-25 via GitHub API), so no
+vendor pull delivers the fix either.
+
+**Recon (2026-10-25).** A complete migration probe exists and is kept:
+branch `recon/electron-42` (worktree `../ZCode-hydra-recon-e42`, commit
+`64fbf7df`), findings in `.fork/drafts/electron-42-recon.md`. Bottom line:
+the API-level migration is small (3-file pin diff; typecheck/lint/29 targeted
+unit tests green; Node stays on 24.x so native ABI and the
+`ELECTRON_RUN_AS_NODE` agent bundle are untouched), and the real cost is
+install-flow rework (42 removed the postinstall binary download — bootstrap,
+CI, and the zcode-hydra PKGBUILD need an explicit install step) plus runtime
+re-validation (wdio service matrix, ARMS Crashpad parsing, playwright-core
+pin, KDE tray matrix) — and permanent upstream divergence until upstream
+moves.
+
+**Decision.** Stay on Electron 41.0.3; accept the exposure; treat this vuln
+class at heightened alert. The maintainer explicitly declines ownership of
+an Electron major bump for now.
+
+**Watch posture (alert level: elevated).**
+
+| Signal | Source | Action |
+|---|---|---|
+| Electron security release **backporting the eMudhra/emSign trust update to 41.x** — none exists today (incident report: the 41 line was never patched); check every Electron security post, treat as unlikely | electronjs.org release feed / Electron GHSA | pin bump in-major (low friction; note 41.10.7 point releases do NOT carry this fix) |
+| Public exploit / KEV entry or attack tooling using eMudhra/emSign chains against Electron/bundled-store clients | CISA KEV, GitHub advisories, security press | escalate: execute the recon migration map on the hydra line out of band |
+| eMudhra/emSign event developments (newly named chains, revocation/trust-store changes) | emudhra.we-have-a-problem.com, CT monitoring | re-probe the running app: checker-host fetch returning HTTP 200 = still exposed; TLS error = safe (package/lockfile scans cannot see compiled-in roots) |
+| upstream bumps to ≥42.11.16 | zai-org/ZCode `packages/desktop/package.json` | ride the vendor pull; the recon checklist enumerates the validation debt |
+
+**Detection.** The Fri 21:30 PKGBUILD-review and Sat 10:00 vulnscan
+automations carry this item via `~/sysinfo/SECURITY-INVENTORY.md` R14; the
+checker-host probe tests the compiled-in store directly. The recon pin
+(42.11.18) is ≥ the first fixed version (42.11.16), so the preserved map
+targets a fixed runtime.
+
+**Revisit triggers.** Any watch action firing; an upstream bump; or the
+maintainer choosing to take on the maintenance burden. In every case start
+from the recon map — do not re-derive it.
+
+**Alternatives rejected.** Adopt 42 now (maintenance ownership declined);
+patch CA trust in-app (new unvalidated divergence surface); rely on 41.x
+point releases (per the threat model the fix is not backported).
