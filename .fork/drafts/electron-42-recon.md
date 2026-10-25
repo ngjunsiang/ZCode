@@ -1,5 +1,13 @@
 # Electron 42 migration recon (2026-10-25)
 
+> **Outcome 2026-10-25: NOT adopted** — see ADR-033 in the hydra line's
+> `.fork/decisions.md`. The maintainer declined ownership of the major-bump
+> maintenance for now and chose to stay on Electron 41 with an elevated
+> watch on the eMudhra/emSign CA-compromise exposure (first fixed Electron:
+> 42.11.16; this branch's pin, 42.11.18, targets a fixed runtime). This
+> branch is preserved as the pre-validated migration map; start here if any
+> watch trigger fires.
+
 Recon branch `recon/electron-42`, cut from `0352d809` (hydra/patch/3.16.2 tip).
 Not for merge as-is — this is a probe: it bumps the pins, runs the gates, and
 records what breaks. Real migration follows this map.
