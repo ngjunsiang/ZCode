@@ -2,6 +2,7 @@ import { installRequestSecurityDiagnostics } from "./request-security-edition/in
 import { createLocalTtftExporter } from "./localTtftExporter.js";
 /* eslint-disable max-lines */
 import "./desktopEarlyDataBaseDirBootstrap.js";
+import { requestAppRelaunch } from "./appRelaunch.js";
 import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
@@ -78,6 +79,7 @@ import {
   ZCODE_ENV,
   ZCODE_PRODUCT_FLAVOR,
   ZCODE_AUTO_UPDATE_ENABLED,
+  ZCODE_FORCE_UPDATE_GUARD_ENABLED,
   DEFAULT_ZCODE_ENDPOINT_ORIGIN,
   DEFAULT_LOCALE,
   TEST_ZCODE_ENDPOINT_ORIGIN,
@@ -1537,7 +1539,7 @@ async function executeDesktopCommandForApp(
     zcodeEndpointEnvBaseOrigin: resolveZCodeEndpointEnvBaseOrigin(hostProcessLocalEnv),
     onRelaunchApp: async () => {
       await prepareAppQuit("desktop-command-relaunch");
-      app.relaunch();
+      requestAppRelaunch({ logger });
       app.quit();
     },
     credentialsDir: getCredentialsDir(),
@@ -2519,8 +2521,15 @@ app.whenReady().then(async () => {
   // 是面向打包发布客户端的安全门，对未打包 dev 运行时无意义。打包版 app.isPackaged === true，
   // gate 照常生效，对真实用户零影响。
   const skipForceUpdateForLocalDevRuntime = !app.isPackaged;
+  // 构建期 ZCODE_FORCE_UPDATE_GUARD=0 的发布线（升级所有权在包管理器/用户，见
+  // docs/desktop/build-time-optional-capabilities.md）跳过远端强更门：这种构建没有
+  // 自更新通道，被 minimalVersion 硬锁后用户无法自救，与上面 dev 跳过同一性质——
+  // 门只面向「能自己更新的发布客户端」。默认（未配置）仍开启，上游行为不变。
+  const skipForceUpdateForGuardDisabledBuild = !ZCODE_FORCE_UPDATE_GUARD_ENABLED;
   const forceUpdateGuardResult =
-    ZCODE_PRODUCT_FLAVOR === "production" && !skipForceUpdateForLocalDevRuntime
+    ZCODE_PRODUCT_FLAVOR === "production" &&
+    !skipForceUpdateForLocalDevRuntime &&
+    !skipForceUpdateForGuardDisabledBuild
       ? await maybeBlockStartupForForceUpdate({
           locale: currentApplicationLocale,
           logger,
@@ -2534,6 +2543,10 @@ app.whenReady().then(async () => {
     logger.info("[force-update] Preview 跳过远端强制升级检查");
   } else if (skipForceUpdateForLocalDevRuntime) {
     logger.info("[force-update] 本地 dev 构建（未打包）跳过远端强制升级检查");
+  } else if (skipForceUpdateForGuardDisabledBuild) {
+    logger.info(
+      "[force-update] 构建期已关闭强更门（ZCODE_FORCE_UPDATE_GUARD=0），跳过远端强制升级检查",
+    );
   }
   if (forceUpdateGuardResult.blocked) {
     return;

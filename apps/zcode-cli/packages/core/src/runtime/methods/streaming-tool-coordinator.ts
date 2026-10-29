@@ -23,6 +23,7 @@ import {
   emitStreamRecoveryRetryEvents,
   emitStreamRecoveryStarted,
   hasStreamRecoveryBudget,
+  isRetryableStreamRecoveryFailure,
   recoverPartialAssistantOutputFailure,
 } from "./streaming-recovery.js";
 import { executeToolCallsForModelStep } from "./turn-tools.js";
@@ -215,6 +216,22 @@ export function createStreamingToolCoordinator(
           state,
           turnAbortListener: abortOnTurnCancel,
         });
+      }
+      // fork/ADR-002 终态闸：配额耗尽等 retryable:false 业务失败曾在 tool 分支被无条件
+      // re-request（入口闸只有 abort+budget），最多 10 次注定失败的请求，且每轮都提交
+      // 一份合成 interrupted 结果污染后续上下文。修复：终态时仍按 warm-context parity
+      // 提交一次 assistant+toolCalls+合成结果（不留 dangling tool_use，冷恢复一致），
+      // 但不消费恢复预算、不发恢复事件，返回 false 让调用方走 abandon+persist 终态路径。
+      // v3.15.1 起 settlement/commit 已上游化为 prepare/commitAcceptedToolSettlement，
+      // fork 仅保留终态判定与预算/事件旁路；可重试路径与上游保持一致。
+      if (!isRetryableStreamRecoveryFailure(error)) {
+        const terminalSettlement = await prepareAcceptedToolSettlement();
+        await commitAcceptedToolSettlement(
+          assistantCreatedAt,
+          { recoveredFromStreamFailure: true },
+          terminalSettlement,
+        );
+        return false;
       }
       const recoveryAttempt = beginStreamRecoveryAttempt(state);
       const settlement = await prepareAcceptedToolSettlement();

@@ -1392,6 +1392,10 @@ const enUS: Record<string, string> = {
   "sidebar.profile.userIdCopied": "User ID copied",
   "sidebar.profile.userIdCopyFailed": "Copy failed. Please try again",
   "sidebar.profile.notLoggedIn": "Connect",
+  "sidebar.accountSwitcher.title": "Switch account",
+  "sidebar.accountSwitcher.addAccount": "Add account",
+  "sidebar.accountSwitcher.empty": "No other signed-in accounts",
+  "sidebar.accountSwitcher.switchFailed": "Failed to switch account. Please try again",
   "app.selectFile": "Select a file to get started",
   "app.workspace": "Workspace",
   "browser.title": "Browser",
@@ -3254,6 +3258,9 @@ const enUS: Record<string, string> = {
   "settings.askUserQuestionAutoResolution": "Automatically continue questions",
   "settings.askUserQuestionAutoResolutionDescription":
     "When enabled, Agent questions automatically continue after 5 minutes without an answer. When disabled, current and future questions wait for your response.",
+  "settings.autoResume": "Auto-resume at quota reset",
+  "settings.autoResumeDescription":
+    "When a session is interrupted by a usage limit, the desktop host automatically schedules it to resume at the reset time. You can cancel each scheduled resume from the banner.",
   "settings.dynamicWorkflow": "Dynamic workflows",
   "settings.dynamicWorkflowDescription":
     "Let the model orchestrate many subagents working in parallel, so it can take on complex tasks and deliver polished results.",
@@ -6972,6 +6979,20 @@ const enUS: Record<string, string> = {
   "chat.quota.action.switchModel": "Switch model",
   "chat.quota.action.switchProvider": "Switch provider",
   "chat.quota.action.refresh": "Refresh quota",
+  // fork resumeTurn：配额中断会话的续跑入口。
+  "chat.quota.action.resume": "Resume",
+  // fork Auto-Resume（spec-auto-resume.md U27）
+  "chat.quota.action.autoResume": "Auto-Resume at {time}",
+  "chat.quota.autoResume.scheduled": "Auto-Resume {time} · click to cancel",
+  "chat.quota.autoResume.scheduledHint":
+    "Scheduled to resume this session automatically when the usage limit resets. Click to cancel.",
+  "chat.quota.autoResume.noResetTime":
+    "Reset time unknown — Auto-Resume is unavailable until the server provides one.",
+  "chat.quota.autoResume.failed": "Auto-Resume scheduling failed.",
+  "chat.quota.autoResume.badge": "Auto-Resume",
+  "automations.resume.summary":
+    "Bound-session resume: continues this session automatically when the usage limit resets.",
+  "chat.quota.resume.failed": "Resume failed. Please try again.",
 
   // Permissions
   "chat.permission.title": "Permission required",

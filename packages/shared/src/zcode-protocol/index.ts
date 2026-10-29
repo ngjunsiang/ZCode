@@ -3891,7 +3891,10 @@ export const zcodeAutomationProtocolSchema = z
     automationId: nonEmptyString,
     title: z.string(),
     cronExpr: nonEmptyString,
-    prompt: nonEmptyString,
+    // resumeTurn 动作不投递提示词（落库空串），不能再收紧为非空。
+    prompt: z.string(),
+    // 缺省 "prompt"（旧 host / 旧库行不带该字段）。resumeTurn=Auto-Resume 续跑命令。
+    action: z.enum(["prompt", "resumeTurn"]).optional(),
     modelSelection: modelSelectionSchema.optional(),
     mode: zcodeTaskModeSchema.optional(),
     targetTaskId: nonEmptyString.optional(),
@@ -3914,7 +3917,10 @@ export const zcodeAutomationCreateParamsSchema = z
     title: z.string().optional(),
     cronExpr: nonEmptyString,
     relativeDelayMinutes: z.number().int().positive().max(525_600).optional(),
-    prompt: nonEmptyString,
+    // prompt 动作必填；resumeTurn 动作忽略提示词，允许缺省。
+    prompt: nonEmptyString.optional(),
+    // 缺省 "prompt"。resumeTurn=Auto-Resume：绑定会话续跑命令（fork，见 .fork/spec-auto-resume.md）。
+    action: z.enum(["prompt", "resumeTurn"]).optional(),
     modelSelection: modelSelectionSchema.optional(),
     mode: zcodeTaskModeSchema.optional(),
     targetTaskId: nonEmptyString.optional(),
@@ -3927,6 +3933,31 @@ export const zcodeAutomationCreateParamsSchema = z
     interval: z.number().int().min(1).max(200).optional(),
   })
   .strict()
+  // resumeTurn 的服务端不变量在协议层前置：必须绑定会话、一次性、跟随会话模型/模式。
+  // 注意 targetTaskId 对 prompt 动作合法（会话内 CronCreate 绑定当前会话），不做独占限制。
+  .refine(
+    (input) => (input.action ?? "prompt") !== "resumeTurn" || input.targetTaskId !== undefined,
+    { message: "resumeTurn action requires targetTaskId", path: ["targetTaskId"] },
+  )
+  .refine((input) => (input.action ?? "prompt") !== "resumeTurn" || input.recurring !== true, {
+    message: "resumeTurn action is one-shot and cannot recur",
+    path: ["recurring"],
+  })
+  .refine(
+    (input) =>
+      (input.action ?? "prompt") !== "resumeTurn" ||
+      (input.modelSelection === undefined && input.mode === undefined),
+    {
+      message: "resumeTurn action follows the session model/mode and cannot pin either",
+      path: ["action"],
+    },
+  )
+  .refine(
+    (input) =>
+      (input.action ?? "prompt") === "resumeTurn" ||
+      (input.prompt !== undefined && input.prompt.length > 0),
+    { message: "prompt is required unless action is resumeTurn", path: ["prompt"] },
+  )
   // intervalUnit 与 interval 必须配对提交（只传一个无法确定真实间隔）。
   .refine((input) => (input.intervalUnit === undefined) === (input.interval === undefined), {
     message: "intervalUnit and interval must be set together",

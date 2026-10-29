@@ -408,7 +408,10 @@ export function isConversationInputAdmissionCommand(type: CommandEnvelope["type"
     type === "sendGoalCommand" ||
     type === "compact" ||
     type === "editUserQuery" ||
-    type === "retryTurn"
+    type === "retryTurn" ||
+    // fork resumeTurn：搭上输入准入（subagent 只读防护；admission 账本解析对无
+    // 载荷命令返回 null，不产生 ledger 记录）。
+    type === "resumeTurn"
   );
 }
 
@@ -1079,6 +1082,19 @@ export function createConversationV4Gateway(
     },
     // held choice 裁决（heldQueueInputRequiresChoice）：读投影 inputRouting.mode。
     getInputRoutingMode: (sessionId) => context.v4Gateway?.getInputRoutingMode(sessionId) ?? null,
+    // fork resumeTurn 冷恢复回退（ADR-014）：读 v4 投影 control（数据源 = publisher
+    // snapshot）。gateway 缺席时按无失败终态处理，行为同 ADR-014 之前。
+    getConversationControl: (sessionId) =>
+      context.v4Gateway?.getConversationControl(sessionId) ?? null,
+    // Fork resumeTurn on-demand hydration fallback (ADR-029, G4): gateway builds
+    // the projection exactly like a renderer subscribe would (cold-ready /
+    // hydration), then reads the same narrow control face. Gateway absent →
+    // null, same degradation as getConversationControl above. (Await before the
+    // nullish coalesce: the optional chain on an async method yields
+    // `Promise | undefined`, and the hook's contract is a promise of `X | null`,
+    // not a nullish promise.)
+    ensureHydratedConversationControl: async (sessionId) =>
+      (await context.v4Gateway?.ensureHydratedConversationControl(sessionId)) ?? null,
     // rowId→messageId 翻译面（fork/edit/retry 的定位决策，数据源 = v4 投影）：
     // 惰性走 gateway 的投影查表。
     getMessageIdForRow: (sessionId, rowId) =>

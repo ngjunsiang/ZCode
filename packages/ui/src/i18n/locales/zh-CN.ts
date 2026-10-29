@@ -1267,6 +1267,10 @@ const zhCN: Record<string, string> = {
   "sidebar.profile.userIdCopied": "用户 ID 已复制",
   "sidebar.profile.userIdCopyFailed": "复制失败，请重试",
   "sidebar.profile.notLoggedIn": "连接使用",
+  "sidebar.accountSwitcher.title": "切换账号",
+  "sidebar.accountSwitcher.addAccount": "添加账号",
+  "sidebar.accountSwitcher.empty": "暂无其他已登录账号",
+  "sidebar.accountSwitcher.switchFailed": "切换账号失败，请重试",
   "app.selectFile": "选择文件以开始",
   "app.workspace": "工作区",
   "browser.title": "浏览器",
@@ -3046,6 +3050,9 @@ const zhCN: Record<string, string> = {
   "settings.askUserQuestionAutoResolution": "提问自动继续",
   "settings.askUserQuestionAutoResolutionDescription":
     "开启后，Agent 提问 5 分钟未回答会自动继续；关闭后，当前和后续提问会一直等待你的回答。",
+  "settings.autoResume": "配额重置时自动恢复",
+  "settings.autoResumeDescription":
+    "会话因用量配额中断时，桌面端后台会在重置时刻自动调度恢复。可在横幅上取消已调度的恢复。",
   "settings.dynamicWorkflow": "动态工作流",
   "settings.dynamicWorkflowDescription":
     "让模型用脚本编排大量子代理并行工作，处理复杂任务、交付专业结果。",
@@ -6630,6 +6637,17 @@ const zhCN: Record<string, string> = {
   "chat.quota.action.switchModel": "切换模型",
   "chat.quota.action.switchProvider": "切换供应商",
   "chat.quota.action.refresh": "刷新额度",
+  // fork resumeTurn：配额中断会话的续跑入口。
+  "chat.quota.action.resume": "继续任务",
+  // fork Auto-Resume（spec-auto-resume.md U28）
+  "chat.quota.action.autoResume": "自动恢复于 {time}",
+  "chat.quota.autoResume.scheduled": "已调度自动恢复 {time} · 点击取消",
+  "chat.quota.autoResume.scheduledHint": "已调度：额度重置后将自动续跑本会话。点击取消。",
+  "chat.quota.autoResume.noResetTime": "重置时刻未知——服务端提供前无法自动恢复。",
+  "chat.quota.autoResume.failed": "自动恢复调度失败。",
+  "chat.quota.autoResume.badge": "自动恢复",
+  "automations.resume.summary": "绑定会话续跑任务：额度重置后自动续跑本会话。",
+  "chat.quota.resume.failed": "续跑失败，请重试。",
 
   // 权限请求
   "chat.permission.title": "需要权限",

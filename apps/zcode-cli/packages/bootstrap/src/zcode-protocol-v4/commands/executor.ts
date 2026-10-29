@@ -13,6 +13,8 @@ const SELECTION_SIDE_CHAT_RESTRICTED_COMMANDS = new Set<CommandEnvelope["type"]>
   "resumeGoal",
   "editUserQuery",
   "retryTurn",
+  // fork resumeTurn：selection 侧聊会话没有配额续跑语义。
+  "resumeTurn",
   "forkAssistant",
   "discardSharedContext",
 ]);

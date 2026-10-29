@@ -69,6 +69,23 @@ export function shouldCompleteLoginFromExistingUser(params: {
   return params.hasUser && !params.attempt;
 }
 
+/**
+ * hydra：登录入口自动完成改为人字触发——只响应"入口打开期间 user 从无到有"
+ * （真正的登录成功信号）。已登录时打开入口（账号切换器的 Add account）不再
+ * 闪现即关；入口打开期间完成的 OAuth 成功由 oauthSuccessSeq 效应关闭。
+ */
+export function shouldCompleteLoginEntryOnUserAppeared(params: {
+  userPresentAtEntry: boolean;
+  isUserPresent: boolean;
+  attempt: ActiveLoginEntryAttempt | null;
+}): boolean {
+  return (
+    params.isUserPresent &&
+    !params.userPresentAtEntry &&
+    shouldCompleteLoginFromExistingUser({ hasUser: params.isUserPresent, attempt: params.attempt })
+  );
+}
+
 export function LoginPanel({ active, onComplete }: LoginPanelProps) {
   const { intl } = useZCodeIntl();
   const {
@@ -190,22 +207,37 @@ export function LoginPanel({ active, onComplete }: LoginPanelProps) {
     }
   }, [active, finishActiveLoginEntryAttempt, status]);
 
-  // OAuth 回调成功后 Root 层设置 user，统一登录入口自动关闭。
+  // 登录入口打开期间的 user 出现（登录成功）触发自动关闭；打开时已登录
+  // （hydra Add account）不再立即完成——见 shouldCompleteLoginEntryOnUserAppeared。
+  const userPresenceAtEntryRef = useRef<{ active: boolean; present: boolean }>({
+    active: false,
+    present: false,
+  });
   useEffect(() => {
+    const isUserPresent = Boolean(user);
+    if (!active) {
+      userPresenceAtEntryRef.current = { active: false, present: isUserPresent };
+      return;
+    }
+    const entry = userPresenceAtEntryRef.current;
+    if (!entry.active) {
+      // 激活帧：记录打开时刻的 user 存在性，本身不触发关闭
+      userPresenceAtEntryRef.current = { active: true, present: isUserPresent };
+      return;
+    }
+    userPresenceAtEntryRef.current = { active: true, present: isUserPresent };
     if (
-      active &&
-      shouldCompleteLoginFromExistingUser({
-        hasUser: Boolean(user),
+      shouldCompleteLoginEntryOnUserAppeared({
+        userPresentAtEntry: entry.present,
+        isUserPresent,
         attempt: activeLoginEntryAttemptRef.current,
       })
     ) {
-      // 全局 user 可能来自另一个 Provider，不能把刚发起的购买登录
-      // 误判为成功；Provider-specific attempt 只由匹配的 OAuth success 完成。
       reset();
       setOAuthError(null);
       void onComplete("oauth");
     }
-  }, [active, finishActiveLoginEntryAttempt, onComplete, reset, setOAuthError, user]);
+  }, [active, onComplete, reset, setOAuthError, user]);
 
   useEffect(() => {
     if (!active) {

@@ -9,6 +9,7 @@ import type {
 import { appToolSearchModeSchema } from "@zcode/shared";
 import {
   TID_SETTINGS_ASK_USER_QUESTION_AUTO_RESOLUTION_SWITCH,
+  TID_SETTINGS_AUTO_RESUME_SWITCH,
   TID_SETTINGS_NATIVE_SEARCH_SWITCH,
   TID_SETTINGS_TOOL_SEARCH_SELECT,
   TID_SETTINGS_TOOL_SEARCH_OPTION,
@@ -163,6 +164,7 @@ export function GeneralSectionContent({
   toolGroupingChangesEnabled,
   zcodeInteractionBehavior,
   askUserQuestionAutoResolutionEnabled = true,
+  autoResumeEnabled = true,
   modelIoFullRetentionEnabled = false,
   onDataBaseDirChange,
   onSelectDataBaseDir,
@@ -185,6 +187,7 @@ export function GeneralSectionContent({
   onToolGroupingChangesEnabledChange,
   onZCodeInteractionBehaviorChange,
   onAskUserQuestionAutoResolutionEnabledChange = async () => {},
+  onAutoResumeEnabledChange = async () => {},
   onModelIoFullRetentionEnabledChange = async () => {},
   onOpenOnboardingDialog,
 }: {
@@ -235,6 +238,8 @@ export function GeneralSectionContent({
   toolGroupingChangesEnabled: boolean;
   zcodeInteractionBehavior: ZCodeInteractionBehavior;
   askUserQuestionAutoResolutionEnabled?: boolean;
+  /** fork ADR-026：配额中断自动调度恢复；缺省 true。 */
+  autoResumeEnabled?: boolean;
   modelIoFullRetentionEnabled?: boolean;
   onDataBaseDirChange: (dir: string) => Promise<void>;
   onSelectDataBaseDir: () => Promise<string | null>;
@@ -257,6 +262,7 @@ export function GeneralSectionContent({
   onToolGroupingChangesEnabledChange: (enabled: boolean) => Promise<void>;
   onZCodeInteractionBehaviorChange: (behavior: ZCodeInteractionBehavior) => Promise<void>;
   onAskUserQuestionAutoResolutionEnabledChange?: (enabled: boolean) => Promise<void>;
+  onAutoResumeEnabledChange?: (enabled: boolean) => Promise<void>;
   onModelIoFullRetentionEnabledChange?: (enabled: boolean) => Promise<void>;
   onOpenOnboardingDialog: () => void;
 }) {
@@ -769,7 +775,7 @@ export function GeneralSectionContent({
                   ? `${intl.formatMessage({ id: "settings.closeToTrayUnavailable" })} ${intl.formatMessage({ id: "settings.closeToTrayGnomeHint" })}`
                   : intl.formatMessage({ id: "settings.closeToTrayUnavailable" })
                 : intl.formatMessage({
-              id: "settings.closeToTrayOnWindowsDescription",
+                    id: "settings.closeToTrayOnWindowsDescription",
                   })
             }
             control={
@@ -850,6 +856,21 @@ export function GeneralSectionContent({
               data-testid={TID_SETTINGS_ASK_USER_QUESTION_AUTO_RESOLUTION_SWITCH}
               onCheckedChange={(checked) => {
                 void onAskUserQuestionAutoResolutionEnabledChange(checked);
+              }}
+            />
+          }
+        />
+        {/* fork ADR-026 规则 11：行在所有平台渲染，效果仅桌面端（web-remote 无 automation RPC）。 */}
+        <SettingsRow
+          label={intl.formatMessage({ id: "settings.autoResume" })}
+          description={intl.formatMessage({ id: "settings.autoResumeDescription" })}
+          control={
+            <Switch
+              aria-label={intl.formatMessage({ id: "settings.autoResume" })}
+              checked={autoResumeEnabled}
+              data-testid={TID_SETTINGS_AUTO_RESUME_SWITCH}
+              onCheckedChange={(checked) => {
+                void onAutoResumeEnabledChange(checked);
               }}
             />
           }

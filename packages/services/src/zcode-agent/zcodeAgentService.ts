@@ -1108,6 +1108,8 @@ function toProtocolAutomation(automation: ZCodeAutomation) {
     title: automation.title,
     cronExpr: automation.cronExpr,
     prompt: automation.prompt,
+    // fork Auto-Resume：resumeTurn 动作透传给 renderer（横幅 scheduled 态 / 设置卡片徽标）。
+    action: automation.action,
     modelSelection: automation.modelSelection,
     mode: automation.mode,
     targetTaskId: automation.targetTaskId,
@@ -2894,13 +2896,17 @@ export function createZCodeAgentService(
                 intervalUnit: parsed.data.intervalUnit,
                 interval: parsed.data.interval,
                 prompt: parsed.data.prompt,
+                // fork Auto-Resume：resumeTurn 动作透传（缺省 prompt 由 service 兜底）。
+                action: parsed.data.action,
                 modelSelection: parsed.data.modelSelection,
                 mode: parsed.data.mode,
                 targetTaskId: parsed.data.targetTaskId,
                 botDeliveryTarget: parsed.data.botDeliveryTarget,
                 workspacePath: workspace.workspacePath,
                 workspaceIdentity: workspace.workspaceIdentity,
-                recurring: parsed.data.recurring ?? true,
+                // 历史 prompt 动作缺省无限循环；resumeTurn 是一次性任务，缺省必须为 false。
+                recurring:
+                  parsed.data.action === "resumeTurn" ? false : (parsed.data.recurring ?? true),
                 maxRuns: parsed.data.maxRuns,
               });
               if (automation.targetTaskId) {
@@ -5135,11 +5141,15 @@ export function createZCodeAgentService(
         cronExpr: params.cronExpr,
         relativeDelayMinutes: params.relativeDelayMinutes,
         prompt: params.prompt,
+        // fork Auto-Resume：renderer 管理面（useAutoResume）走此入口创建 resumeTurn。
+        action: params.action,
+        targetTaskId: params.targetTaskId,
         modelSelection: params.modelSelection,
         mode: params.mode as ZCodeTaskMode | undefined,
         workspacePath: params.workspacePath,
         workspaceIdentity: params.workspaceIdentity,
-        recurring: params.recurring ?? true,
+        // 历史 prompt 动作缺省无限循环；resumeTurn 是一次性任务，缺省必须为 false。
+        recurring: params.action === "resumeTurn" ? false : (params.recurring ?? true),
         maxRuns: params.maxRuns,
         endAt: params.endAt,
         scheduleRule: params.scheduleRule,

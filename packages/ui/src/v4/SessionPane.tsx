@@ -297,6 +297,11 @@ import { useV4Conversation } from "@/v4/V4ConversationContext.js";
 import { useConversationProjection } from "@/v4/useConversationProjection.js";
 import { usePendingCommandRecovery } from "@/v4/usePendingCommandRecovery.js";
 import { useV4SessionQuotaBanner } from "@/v4/useV4SessionQuotaBanner.js";
+// fork resumeTurn：配额中断会话的续跑按钮派生状态。
+import { useQuotaResume } from "@/v4/useQuotaResume.js";
+// fork Auto-Resume：额度重置时刻自动续跑（spec-auto-resume.md N6/U26）。
+import { useAutoResume, type AutoResumeUiState } from "@/v4/useAutoResume.js";
+import { formatQuotaResetTime } from "@/lib/codingPlanQuotaPresentation.js";
 import { resolveMcpUnavailableNotice } from "@/v4/mcpUnavailableBannerNotice.js";
 import { shouldFocusTimelineAfterComposerSend } from "@/v4/promptScrollFocusPolicy.js";
 import {
@@ -4005,6 +4010,15 @@ export function SessionPane({
     [dispatchCommand, sessionId],
   );
 
+  // fork resumeTurn：CAS 命令，envelope 形状与 retryTurn 同型（无目标）。
+  const dispatchResumeTurn = useCallback((): Promise<CommandAck> => {
+    const current = snapshotRef.current;
+    if (!sessionId || current === null) {
+      return Promise.reject(new Error("resumeTurn 缺少当前 session 投影"));
+    }
+    return dispatchCommand("resumeTurn", {}, sessionId, current.revision, current.logEpoch);
+  }, [dispatchCommand, sessionId]);
+
   const handleRetry = useCallback(
     (target: ConversationRowTarget) => {
       void dispatchRetryTurn(target)
@@ -4922,6 +4936,36 @@ export function SessionPane({
     usageStatsService: baseWorkspaceServices.usageStatsService,
     mcpUnavailableNotice,
   });
+  // fork resumeTurn：检测 + 额度 un-grey + 派发派生；纯派生，无新持久状态。
+  // autoResumeRef 桥接声明顺序：onResumed 在 ACK 后才执行，读取 ref 即可拿到最新派生。
+  const autoResumeRef = useRef<AutoResumeUiState | null>(null);
+  const quotaResume = useQuotaResume({
+    sessionId: snapshot?.sessionId ?? sessionId,
+    snapshot: snapshot ?? null,
+    providerId: snapshot?.config.provider ?? null,
+    modelId: snapshot?.config.model ?? null,
+    usageStatsService: baseWorkspaceServices.usageStatsService,
+    onResume: dispatchResumeTurn,
+    onResumed: () => {
+      // fork Auto-Resume 规则 6：手动续跑成功 → 主动取消该会话已调度的自动恢复。
+      void autoResumeRef.current?.cancelOnManualResume();
+    },
+  });
+  // fork Auto-Resume：调度/取消/已调度派生；automation RPC 不可用（web-remote）时整体为 null。
+  // ADR-028：规则 8 自动调度已移 host 侧（autoResumeHostScheduler）——这里只保留手动
+  // 按钮/chip 与慢轮询；sharedSettings.autoResumeEnabled 由 host 在失败时刻读取。
+  const autoResume = useAutoResume({
+    sessionId: snapshot?.sessionId ?? sessionId,
+    sessionTitle: snapshot?.meta.title?.trim() ?? null,
+    workspacePath,
+    ...(workspaceIdentity ? { workspaceIdentity } : {}),
+    agentService: baseWorkspaceServices.zcodeAgentService,
+    resetAt: quotaResume?.nextResetAt ?? null,
+    enabled: quotaResume !== null,
+  });
+  useEffect(() => {
+    autoResumeRef.current = autoResume;
+  }, [autoResume]);
   const composerError =
     draftModelReadinessError ??
     sendSubmissionError ??
@@ -5505,7 +5549,7 @@ export function SessionPane({
   const conversationBottomDockContent = readOnly ? null : (
     <>
       {quotaBanner.state.visible &&
-      !quotaBanner.dismissed &&
+      (!quotaBanner.dismissed || quotaResume !== null) &&
       (!projectedComposerError || quotaBanner.takesOverError || quotaBanner.state.blocksSubmit) ? (
         <ConversationQuotaBanner
           state={quotaBanner.state}
@@ -5519,6 +5563,42 @@ export function SessionPane({
               : undefined
           }
           onDismiss={quotaBanner.dismiss}
+          resume={quotaResume ?? undefined}
+          autoResume={
+            // fork Auto-Resume（ADR-016）：可见性跟随失败的服务端重置边界
+            // （nextResetAt 仍在未来）或已调度的 automation，而不是 entitlement
+            // 可用性——2026-10-13 两次实测 enforcement（1308 声称的 reset 时刻）
+            // 与 entitlement 快照互相矛盾，「快照说有量」不能推翻用户刚看到的
+            // 失败。enabled 只管 Resume 的 un-grey；两按钮可并存，手动 Resume
+            // 成功仍会经 onResumed 取消已调度 automation。检测未命中
+            // （quotaResume null）不渲染。
+            quotaResume !== null &&
+            autoResume !== null &&
+            (quotaResume.nextResetAt !== null || autoResume.scheduled !== null)
+              ? {
+                  scheduled: autoResume.scheduled !== null,
+                  canSchedule: autoResume.canSchedule,
+                  timeLabel:
+                    quotaResume.nextResetAt !== null
+                      ? (formatQuotaResetTime({
+                          locale,
+                          value: quotaResume.nextResetAt,
+                          format: "adaptive",
+                        }) ?? null)
+                      : null,
+                  scheduledTimeLabel:
+                    autoResume.scheduled?.nextRunAt != null
+                      ? (formatQuotaResetTime({
+                          locale,
+                          value: autoResume.scheduled.nextRunAt,
+                          format: "adaptive",
+                        }) ?? null)
+                      : null,
+                  onSchedule: autoResume.schedule,
+                  onCancel: autoResume.cancel,
+                }
+              : undefined
+          }
         />
       ) : null}
       {recoverableCommand ? (

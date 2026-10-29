@@ -23,6 +23,8 @@ import {
 } from "@zcode/shared";
 import type { MainToSchedulerMessage, SchedulerToMainMessage } from "./schedulerProtocol.js";
 import { settleManualClaimForDispatchResult } from "./manualClaimRelease.js";
+// fork ADR-017：misfire 判定纯函数拆出（本文件是 utilityProcess 入口，需可单测）。
+import { isMisfireClaim } from "./misfire.js";
 import { settleOffPeakDispatchResult } from "./offPeakDispatchSettlement.js";
 import {
   startSchedulerResourceTelemetry,
@@ -43,6 +45,8 @@ type InFlight = {
   automationId: string;
   workspaceKey: string;
   trigger: ZCodeAutomationTrigger;
+  // fork Auto-Resume：permanent 失败时仅 resumeTurn 动作删除 automation 行（spec 规则 5）。
+  action?: "prompt" | "resumeTurn";
 };
 
 const repo = new AutomationRepo();
@@ -133,11 +137,16 @@ async function handleClaimed(automation: ZCodeAutomation, now: number): Promise<
     workspacePath: automation.workspacePath,
     workspaceIdentity: automation.workspaceIdentity,
   });
-  const isRetry = automation.dispatchAttempts > 0;
 
   // misfire：首轮（非重试）且计划触发时间已远早于 now → 认定错过窗口，跳过不补跑。
-  const missed =
-    !isRetry && automation.nextRunAt != null && automation.nextRunAt <= now - MISFIRE_GRACE_MS;
+  // 重试认领的识别见 isMisfireClaim（ADR-017：retry_at 认领 = 重臂重试，不计 attempts）。
+  const missed = isMisfireClaim({
+    dispatchAttempts: automation.dispatchAttempts,
+    retryAt: automation.retryAt,
+    nextRunAt: automation.nextRunAt,
+    now,
+    graceMs: MISFIRE_GRACE_MS,
+  });
   if (missed) {
     // 纯一次性任务（如 delayMinutes 落成的 minute scheduleRule）错过窗口后，
     // 通用重算会给出 anchorAt + k*interval 的下一周期，让“只跑一次”的提醒在后续周期
@@ -173,6 +182,7 @@ async function handleClaimed(automation: ZCodeAutomation, now: number): Promise<
     automationId: automation.automationId,
     workspaceKey,
     trigger: "schedule",
+    action: automation.action,
   });
   const run = await repo.getRun(runId);
   postDispatchRequest(automation, runId, run?.modelSelection);
@@ -183,11 +193,14 @@ function postDispatchRequest(
   runId: string,
   fixedSelection?: ZCodeAutomationRun["modelSelection"],
 ): void {
+  const isResumeTurn = automation.action === "resumeTurn";
   const request: SchedulerToMainMessage = {
     type: "cron-dispatch-request",
     automationId: automation.automationId,
     runId,
-    prompt: automation.prompt,
+    // resumeTurn 不投递提示词（字段省略而非空串，保持 prompt 动作 wire 契约不变）。
+    ...(isResumeTurn ? {} : { prompt: automation.prompt }),
+    ...(isResumeTurn ? { action: automation.action } : {}),
     ...(automation.targetTaskId ? { targetTaskId: automation.targetTaskId } : {}),
     ...((fixedSelection ?? automation.modelSelection)
       ? { modelSelection: fixedSelection ?? automation.modelSelection }
@@ -213,6 +226,7 @@ async function handleClaimedManual(
       workspaceIdentity: automation.workspaceIdentity,
     }),
     trigger: "manual",
+    action: automation.action,
   });
   postDispatchRequest(automation, run.runId, run.modelSelection);
 }
@@ -316,19 +330,37 @@ async function settleDispatchResult(
     const automation = await repo.get(automationId);
     const nextRunAt = automation ? computeAutomationNextRunAt(automation, now) : null;
     await repo.markDispatched(automationId, { dispatchedAt: now, nextRunAt });
+    // fork Auto-Resume 规则 5：schedule 触发的 resumeTurn 派发成功即删除 automation 行
+    // （manual runNow 不删——计划仍在）。runs 历史保留（delete 不级联）。
+    if (msg.settlement === "completed") {
+      await repo.delete(automationId);
+    }
     return;
   }
 
   await repo.markRunDispatch({
     runId: msg.runId,
-    dispatchStatus: "failed_to_dispatch",
+    dispatchStatus: msg.settlement === "obsolete" ? "skipped" : "failed_to_dispatch",
     error: msg.error ?? "dispatch failed",
   });
   if (trigger === "manual") {
     await settleManualClaim(false);
     return;
   }
+  // fork Auto-Resume：会话已无需续跑（CLI guard 拒绝/连续 stale）→ 静默跳过并删除行。
+  if (msg.settlement === "obsolete") {
+    await repo.delete(automationId);
+    return;
+  }
   const kind = msg.failureKind ?? "transient";
+  // fork Auto-Resume 重臂：额度未到点按 host 上报时刻直接 retry_at，不计 attempts（视界由 host 决策）。
+  if (kind === "transient" && msg.retryAtMs != null) {
+    await repo.markDispatchRetryAt(automationId, {
+      retryAtMs: msg.retryAtMs,
+      error: msg.error ?? "dispatch failed",
+    });
+    return;
+  }
   await repo.markDispatchFailed(automationId, {
     failedAt: now,
     error: msg.error ?? "dispatch failed",
@@ -338,6 +370,10 @@ async function settleDispatchResult(
       .get(automationId)
       .then((automation) => (automation ? computeAutomationNextRunAt(automation, now) : null)),
   });
+  // fork Auto-Resume 规则 5：permanent（视界耗尽/硬失败）同样终态删除；prompt 动作保留行供 UI 展示。
+  if (kind === "permanent" && context?.action === "resumeTurn") {
+    await repo.delete(automationId);
+  }
 }
 
 async function dispose(): Promise<void> {

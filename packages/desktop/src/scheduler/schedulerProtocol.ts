@@ -9,7 +9,12 @@ export type SchedulerToMainMessage =
       type: "cron-dispatch-request";
       automationId: string;
       runId: string;
-      prompt: string;
+      // fork U19（3.16.2 移植修正）：prompt 可选，与 shared validation 的
+      // hostCronRunMessageSchema（U18）对齐——resumeTurn 动作省略字段而非空串；
+      // 3.16.2 起该文件纳入 tsc 工程面，条件展开缺支路的旧写法在必选类型下不再成立。
+      prompt?: string;
+      // fork Auto-Resume：resumeTurn 动作时 host 不投递 prompt，改派 v4 resumeTurn 命令。
+      action?: "prompt" | "resumeTurn";
       targetTaskId?: string;
       modelSelection?: ModelSelection;
       mode?: string;
@@ -64,6 +69,10 @@ export type MainToSchedulerMessage =
       sessionId?: string;
       error?: string;
       failureKind?: "transient" | "permanent";
+      // fork Auto-Resume 结算意图（host 上报，scheduler 是 tasks-index 属主、负责执行删除/重臂）。
+      settlement?: "completed" | "obsolete";
+      /** transient 额度未到点重臂：直接指定 retry_at，不走退避公式、不计 attempts。 */
+      retryAtMs?: number;
     }
   | {
       // 闲时任务派发结果；迟到结果仅凭 offPeakTaskId 结算（无 inFlight 上下文也可，幂等）。
