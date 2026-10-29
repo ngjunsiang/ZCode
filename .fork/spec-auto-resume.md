@@ -79,7 +79,18 @@ PATCHES IDs U16–U28 / N6–N8 are reserved for this spec.
      Run history rows are retained (repo delete never cascades) but the card is gone.
      A later re-interruption can schedule a new auto-resume (binding check passes).
    - CLI guard rejection / stale-exhausted CAS → "obsolete" (silent skip): run
-     recorded `skipped`, automation row deleted, no toast.
+     recorded `skipped`, automation row deleted, no toast. **ADR-029 amendment
+     (2026-10-18 incident, third auto-resume failure): a rejection settles
+     obsolete only when it is affirmative (`resumeNotIdle` / `resumeNotQuotaFailed`
+     — the guard saw the fact and judged its content) or verified.
+     `guard.resumeNoFailedTurn` is the one code a blind guard produces (both
+     in-memory fact sources are empty for sessions no renderer ever hydrated), so
+     the dispatch re-checks the session's persisted terminal state via the same
+     mount-independent `readSession` the scheduler used (G6
+     `classifyResumeTurnGuardRejection`): still quota-failed — or re-check
+     unavailable — → **transient re-arm, row kept**; verified negative → obsolete
+     as before. Store inventory, gate catalogue and invariants:
+     `spec-auto-resume-mechanism.md`.**
    - Horizon exhausted / permanent dispatch failure → run recorded failed with the
      error, automation row deleted too (auto-delete on failure — the settings page
      never accumulates dead resume cards; the session banner's manual Resume is the

@@ -84,6 +84,9 @@ const OAUTH_SESSION_CREDENTIAL_KEYS = [
   "oauth:zai:refresh_token",
   "oauth:zai:user_info",
   "zcodejwttoken",
+  // hydra registry：多账号注册表索引与活跃指针随会话清理一并删除
+  "oauth:accounts",
+  "oauth:active_account",
 ] as const;
 
 function expectDeletedOAuthSessionCredentials(
@@ -2176,7 +2179,9 @@ describe("oauthService", () => {
     expect(await credentialServiceStub.load("zcodejwttoken")).toBeNull();
   });
 
-  it("clears the opposite OAuth provider when switching App login provider", async () => {
+  it("keeps the opposite OAuth provider logged in when switching App login provider", async () => {
+    // hydra：互斥身份域移除。旧契约是跨 provider 登录清空对侧凭据；
+    // 现在两侧登录并存于注册表，共享 zcodejwttoken 槽位归活跃账号。
     const fetchMock = vi.fn<typeof fetch>();
     const service = createBigModelService({
       apiClient: createMockApiClient(fetchMock),
@@ -2205,9 +2210,98 @@ describe("oauthService", () => {
     expect(await credentialServiceStub.load("oauth:bigmodel:access_token")).toBe(
       "new-bigmodel-business-token",
     );
-    expect(await credentialServiceStub.load("oauth:zai:access_token")).toBeNull();
-    expect(await credentialServiceStub.load("oauth:zai:user_info")).toBeNull();
+    expect(await credentialServiceStub.load("oauth:zai:access_token")).toBe("old-zai-token");
+    expect(await credentialServiceStub.load("oauth:zai:user_info")).toBe(
+      JSON.stringify({
+        id: "zai-old",
+        username: "zai-old",
+        displayName: "ZAI Old",
+      }),
+    );
     expect(await credentialServiceStub.load("zcodejwttoken")).toBe("new-bigmodel-zcode-jwt");
+  });
+
+  it("switchAccount restores the target account's frozen tokens and profile", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const service = createBigModelService({
+      apiClient: createMockApiClient(fetchMock),
+    });
+
+    // 同 provider 登录第二个账号：登录时冻结 outgoing（含共享 JWT 槽位）
+    const { state: stateA } = await service.startOAuth(BIGMODEL_PROVIDER_ID);
+    fetchMock.mockResolvedValueOnce(
+      createBigModelZcodeTokenResponse("a-zcode-jwt", "a-business-token"),
+    );
+    fetchMock.mockResolvedValueOnce(
+      createBigModelUserInfoResponse("Account A", "account-a", "Account A"),
+    );
+    await service.handleCallback(`zcode://oauth/callback?authCode=login-a&state=${stateA}`);
+
+    const { state: stateB } = await service.startOAuth(BIGMODEL_PROVIDER_ID);
+    fetchMock.mockResolvedValueOnce(
+      createBigModelZcodeTokenResponse("b-zcode-jwt", "b-business-token"),
+    );
+    fetchMock.mockResolvedValueOnce(
+      createBigModelUserInfoResponse("Account B", "account-b", "Account B"),
+    );
+    await service.handleCallback(`zcode://oauth/callback?authCode=login-b&state=${stateB}`);
+
+    expect(await credentialServiceStub.load("zcodejwttoken")).toBe("b-zcode-jwt");
+
+    await service.switchAccount(BIGMODEL_PROVIDER_ID, "account-a");
+
+    expect(await credentialServiceStub.load("oauth:active_provider")).toBe(BIGMODEL_PROVIDER_ID);
+    expect(JSON.parse((await credentialServiceStub.load("oauth:active_account"))!)).toEqual({
+      provider: BIGMODEL_PROVIDER_ID,
+      accountId: "account-a",
+    });
+    // 解冻 A 的冻结副本：access token 与共享 JWT 都回到 A 的值
+    expect(await credentialServiceStub.load("oauth:bigmodel:access_token")).toBe("a-business-token");
+    expect(await credentialServiceStub.load("zcodejwttoken")).toBe("a-zcode-jwt");
+    expect(JSON.parse((await credentialServiceStub.load("oauth:bigmodel:user_info"))!)).toMatchObject(
+      {
+        id: "account-a",
+        username: "Account A",
+      },
+    );
+    await expect(service.getActiveProvider()).resolves.toBe(BIGMODEL_PROVIDER_ID);
+  });
+
+  it("listAccounts returns known accounts with the active first", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const service = createBigModelService({
+      apiClient: createMockApiClient(fetchMock),
+    });
+
+    const { state: stateA } = await service.startOAuth(BIGMODEL_PROVIDER_ID);
+    fetchMock.mockResolvedValueOnce(
+      createBigModelZcodeTokenResponse("a-zcode-jwt", "a-business-token"),
+    );
+    fetchMock.mockResolvedValueOnce(
+      createBigModelUserInfoResponse("Account A", "account-a", "Account A"),
+    );
+    await service.handleCallback(`zcode://oauth/callback?authCode=login-a&state=${stateA}`);
+
+    const { state: stateB } = await service.startOAuth(BIGMODEL_PROVIDER_ID);
+    fetchMock.mockResolvedValueOnce(
+      createBigModelZcodeTokenResponse("b-zcode-jwt", "b-business-token"),
+    );
+    fetchMock.mockResolvedValueOnce(
+      createBigModelUserInfoResponse("Account B", "account-b", "Account B"),
+    );
+    await service.handleCallback(`zcode://oauth/callback?authCode=login-b&state=${stateB}`);
+
+    const accounts = await service.listAccounts();
+    expect(accounts.map((account) => account.accountId)).toEqual(["account-b", "account-a"]);
+    expect(accounts[0]).toMatchObject({
+      provider: BIGMODEL_PROVIDER_ID,
+      username: "Account B",
+      displayName: "Account B",
+    });
+
+    await expect(
+      service.switchAccount(BIGMODEL_PROVIDER_ID, "account-missing"),
+    ).rejects.toThrow(/切换目标账号不存在/);
   });
 
   it("BigModel zcode token 响应缺少 token 时中止登录", async () => {
@@ -2344,7 +2438,11 @@ describe("oauthService", () => {
       }),
     );
     expect(await credentialServiceStub.load("oauth:active_provider")).toBe(BIGMODEL_PROVIDER_ID);
-    expect(await credentialServiceStub.load("oauth:zai:user_info")).toBeNull();
+    // hydra：互斥身份域移除——zai 登录保留（注册表可切回），不再随 provider 切换清空
+    expect(JSON.parse((await credentialServiceStub.load("oauth:zai:user_info"))!)).toMatchObject({
+      id: "zai-u-keep",
+      username: "existing-zai-user",
+    });
   });
 
   it("BigModel zcode token body 不携带 appSecret", async () => {

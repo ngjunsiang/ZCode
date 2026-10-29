@@ -69,8 +69,10 @@ import {
   OffPeakModelUnavailableError,
   OffPeakPermanentDispatchError,
   // fork Auto-Resume：额度预检 + 重臂决策 + resumeTurn CAS 派发共用件。
+  classifyResumeTurnGuardRejection,
   decideResumeTurnDispatch,
   isEntitlementQuotaAvailable,
+  isQuotaClassifiedResumeError,
   nextEntitlementResetAt,
   resolveSessionPinnedQuotaResumeRequest,
   sendHostCasCommandV4,
@@ -1026,6 +1028,61 @@ async function dispatchResumeTurnRun(
     if (error instanceof ZCodeV4CommandRejectedError && trigger === "schedule") {
       // CLI guard（会话已恢复/已无失败轮/非配额失败）或连续 stale：会话不再需要续跑。
       // 静默跳过（spec 规则 5）：scheduler 记 skipped run 并删除 automation 行。
+      // ADR-029 (G6): a rejection settles obsolete only when affirmative or
+      // verified. guard.resumeNoFailedTurn is the one code a blind guard
+      // produces — both in-memory fact sources are empty for sessions no
+      // renderer ever hydrated (2026-10-18 incident: all 4 scheduled resumes
+      // were deleted this way) — so re-check the session's persisted terminal
+      // state with the same mount-independent readSession the scheduler used
+      // before deleting the plan. classifier: automationResumePolicy.
+      const reasonCode = error.ack.reasonCode ?? null;
+      let persistedFailureStillQuota: boolean | null = null;
+      if (reasonCode === "guard.resumeNoFailedTurn") {
+        try {
+          const agentServiceForVerify = targetServices.getOptional(IZCodeAgentService);
+          if (agentServiceForVerify) {
+            const snapshot = await agentServiceForVerify.readSession({
+              workspacePath: request.workspacePath,
+              ...(request.workspaceIdentity
+                ? { workspaceIdentity: request.workspaceIdentity }
+                : {}),
+              sessionId: taskId,
+              runtimePolicy: "existing-only",
+              contentProfile: "index",
+            });
+            if (snapshot.projection.status !== "error") {
+              persistedFailureStillQuota = false;
+            } else if (snapshot.projection.lastError) {
+              persistedFailureStillQuota = isQuotaClassifiedResumeError(
+                snapshot.projection.lastError,
+              );
+            }
+            // status "error" without a usable lastError stays null (unverifiable).
+          }
+        } catch (verifyError) {
+          logger.warn(
+            `resumeTurn obsolete re-check failed; failing safe to re-arm runId=${request.runId}`,
+            verifyError,
+          );
+        }
+      }
+      const settlementDecision = classifyResumeTurnGuardRejection({
+        reasonCode,
+        persistedFailureStillQuota,
+        now: Date.now(),
+      });
+      if (settlementDecision.kind === "transient") {
+        logger.warn(
+          `Auto-Resume re-arm：guard rejection contradicted by persisted quota failure ` +
+            `(reasonCode=${reasonCode}) retry_at=${new Date(settlementDecision.retryAtMs).toISOString()} ` +
+            `runId=${request.runId}`,
+        );
+        throw new CronDispatchOutcomeError(
+          `Auto-Resume re-arm：guard rejection not verifiable as obsolete ` +
+            `(reasonCode=${reasonCode}), retry_at=${settlementDecision.retryAtMs}（runId=${request.runId}）。`,
+          { failureKind: "transient", retryAtMs: settlementDecision.retryAtMs },
+        );
+      }
       logger.info(`Auto-Resume obsolete：${error.message} runId=${request.runId}`);
       throw new CronDispatchOutcomeError(error.message, {
         failureKind: "permanent",

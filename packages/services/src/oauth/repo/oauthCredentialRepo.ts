@@ -1,5 +1,4 @@
 /* eslint-disable max-lines -- OAuth 凭据仓储集中维护 ZAI/BigModel 登录镜像 key 边界，拆分会让鉴权事实源更难追踪。 */
-import { Buffer } from "node:buffer";
 import type {
   OAuthLoginAttribution,
   OAuthProviderId,
@@ -9,28 +8,20 @@ import type {
 import { BIGMODEL_PROVIDER_ID, isCredentialDecryptError, ZAI_PROVIDER_ID } from "@zcode/shared";
 import type { ICredentialService } from "../../credential/credential.js";
 import { createServiceLogger } from "../../logger/serviceLogger.js";
+import {
+  OAuthAccountStore,
+  deriveAccountId,
+  legacyUserInfoKey,
+  type OAuthAccountRef,
+} from "./oauthAccountStore.js";
 
-const ACTIVE_PROVIDER_KEY = "oauth:active_provider";
 const LOGIN_ATTRIBUTION_KEY = "oauth:login_attribution";
-const ZCODE_JWT_TOKEN_KEY = "zcodejwttoken";
 const KNOWN_OAUTH_PROVIDER_IDS = [BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID] as const;
 const log = createServiceLogger("oauthCredentialRepo");
 
 interface OAuthCredentialRepoOptions {
   providerIds?: readonly OAuthProviderId[];
   onCorruptOAuthSessionCleared?: (providerIds: readonly OAuthProviderId[]) => Promise<void>;
-}
-
-function accessTokenKey(provider: OAuthProviderId): string {
-  return `oauth:${provider}:access_token`;
-}
-
-function refreshTokenKey(provider: OAuthProviderId): string {
-  return `oauth:${provider}:refresh_token`;
-}
-
-function userInfoKey(provider: OAuthProviderId): string {
-  return `oauth:${provider}:user_info`;
 }
 
 function collectKnownOAuthProviderIds(
@@ -43,104 +34,29 @@ function collectKnownOAuthProviderIds(
   return [...uniqueProviderIds];
 }
 
-function inferBase64ImageMimeType(decoded: Buffer): string {
-  if (
-    decoded.length >= 8 &&
-    decoded[0] === 0x89 &&
-    decoded[1] === 0x50 &&
-    decoded[2] === 0x4e &&
-    decoded[3] === 0x47
-  ) {
-    return "image/png";
-  }
-
-  if (decoded.length >= 3 && decoded[0] === 0xff && decoded[1] === 0xd8 && decoded[2] === 0xff) {
-    return "image/jpeg";
-  }
-
-  if (decoded.length >= 6 && decoded.toString("ascii", 0, 3) === "GIF") {
-    return "image/gif";
-  }
-
-  if (
-    decoded.length >= 12 &&
-    decoded.toString("ascii", 0, 4) === "RIFF" &&
-    decoded.toString("ascii", 8, 12) === "WEBP"
-  ) {
-    return "image/webp";
-  }
-
-  return "image/png";
+function sameRef(left: OAuthAccountRef, right: OAuthAccountRef): boolean {
+  return left.provider === right.provider && left.accountId === right.accountId;
 }
 
-function toBase64ImageDataUrl(raw: string): string | null {
-  const normalized = raw.replace(/\s/g, "");
-  if (normalized.length < 16 || !/^[A-Za-z0-9+/]+={0,2}$/.test(normalized)) {
-    return null;
-  }
-
-  const decoded = Buffer.from(normalized, "base64");
-  if (decoded.length === 0) {
-    return null;
-  }
-
-  const encoded = decoded.toString("base64").replace(/=+$/, "");
-  if (encoded !== normalized.replace(/=+$/, "")) {
-    return null;
-  }
-
-  return `data:${inferBase64ImageMimeType(decoded)};base64,${normalized}`;
-}
-
-function normalizeStoredZaiAvatarUrl(avatar: string | undefined): string | undefined {
-  const trimmed = avatar?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (/^data:image\/[^;]+;base64,/i.test(trimmed) || /^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const dataUrl = toBase64ImageDataUrl(trimmed);
-  if (dataUrl) {
-    return dataUrl;
-  }
-
-  return trimmed;
-}
-
-function toOAuthUserProfileFromRawZaiUser(raw: Record<string, unknown>): OAuthUserProfile | null {
-  const id = typeof raw.user_id === "string" ? raw.user_id : "unknown";
-  const name = typeof raw.name === "string" ? raw.name.trim() : "";
-  const email = typeof raw.email === "string" ? raw.email : "";
-  const username = name || email || id;
-  const avatarUrl = normalizeStoredZaiAvatarUrl(
-    typeof raw.avatar === "string" ? raw.avatar : undefined,
-  );
-
-  if (!name && !email && id === "unknown") {
-    return null;
-  }
-
-  return {
-    id,
-    username,
-    displayName: username,
-    ...(avatarUrl ? { avatarUrl } : {}),
-    rawProfile: raw,
-  };
-}
-
-/** OAuth 凭据仓储：统一 provider 命名空间 */
+/**
+ * OAuth 凭据仓储。
+ *
+ * 对上保持历史公开 API（单一活跃登录语义），对下委托 OAuthAccountStore 维护
+ * 多账号注册表（hydra fork）：同一 credentials.json 内并存多个登录实例，
+ * 活跃账号持续镜像到 legacy oauth:* 槽位，official build / CLI 的外部写入由
+ * store 的 reconcile 跟随。损坏恢复策略（解密失败 → 全清 + 通知派生凭据清理）
+ * 仍在本层裁决。
+ */
 export class OAuthCredentialRepo {
   private readonly knownProviderIds: OAuthProviderId[];
+  private readonly store: OAuthAccountStore;
 
   constructor(
     private credentialService: ICredentialService,
     options: OAuthCredentialRepoOptions = {},
   ) {
     this.knownProviderIds = collectKnownOAuthProviderIds(options.providerIds);
+    this.store = new OAuthAccountStore(credentialService, { providerIds: this.knownProviderIds });
     this.onCorruptOAuthSessionCleared = options.onCorruptOAuthSessionCleared;
   }
 
@@ -158,7 +74,7 @@ export class OAuthCredentialRepo {
 
   async loadActiveProvider(): Promise<OAuthProviderId | null> {
     try {
-      return await this.credentialService.load(ACTIVE_PROVIDER_KEY);
+      return (await this.store.resolveActiveRef())?.provider ?? null;
     } catch (error) {
       if (!isCredentialDecryptError(error)) {
         throw error;
@@ -171,56 +87,64 @@ export class OAuthCredentialRepo {
 
   async saveActiveProvider(provider: OAuthProviderId | null): Promise<void> {
     if (!provider) {
-      await this.credentialService.delete(ACTIVE_PROVIDER_KEY);
+      await this.store.deactivate();
       return;
     }
 
     // App 登录恢复为 oauth:* 镜像，active provider 是互斥 provider 域的唯一事实源。
-    await this.credentialService.save(ACTIVE_PROVIDER_KEY, provider);
+    // （hydra：registry 化后 legacy active_provider 是活跃账号的镜像投影，registry 指针为事实源。）
+    await this.store.activateProvider(provider);
   }
 
   async loadActiveTokenSet(): Promise<OAuthTokenSet | null> {
-    const provider = await this.loadActiveProvider();
-    if (!provider) {
+    try {
+      const ref = await this.store.resolveActiveRef();
+      if (!ref) {
+        return null;
+      }
+      // 活跃 token 事实源在 legacy 镜像；与旧版逐位一致
+      return await this.store.readActiveMirrorTokenSet(ref.provider);
+    } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+
+      await this.clearCorruptOAuthSession();
       return null;
     }
-
-    const tokenSet = await this.loadTokenSet(provider);
-    if (tokenSet) {
-      return tokenSet;
-    }
-
-    return null;
   }
 
   async saveActiveTokenSet(tokenSet: OAuthTokenSet): Promise<void> {
-    const provider = await this.loadActiveProvider();
-    if (!provider) {
+    const ref = await this.store.resolveActiveRef();
+    if (!ref) {
       throw new Error("保存当前登录 token 前缺少 active provider");
     }
-    await this.saveTokenSet(provider, tokenSet);
+    await this.store.putMirrorTokenSet(ref.provider, tokenSet);
   }
 
   async loadActiveUserProfile(): Promise<OAuthUserProfile | null> {
-    const provider = await this.loadActiveProvider();
-    if (!provider) {
+    try {
+      const ref = await this.store.resolveActiveRef();
+      if (!ref) {
+        return null;
+      }
+      return await this.store.loadAccountProfile(ref);
+    } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+
+      await this.clearCorruptOAuthSession();
       return null;
     }
-
-    const profile = await this.loadUserProfile(provider);
-    if (profile) {
-      return profile;
-    }
-
-    return null;
   }
 
   async saveActiveUserProfile(profile: OAuthUserProfile): Promise<void> {
-    const provider = await this.loadActiveProvider();
-    if (!provider) {
+    const ref = await this.store.resolveActiveRef();
+    if (!ref) {
       throw new Error("保存当前登录 user 前缺少 active provider");
     }
-    await this.saveUserProfile(provider, profile);
+    await this.store.putAccountProfile(ref, profile);
   }
 
   async saveLoginAttribution(attribution: OAuthLoginAttribution): Promise<void> {
@@ -235,6 +159,7 @@ export class OAuthCredentialRepo {
       return;
     }
 
+    // 归因参数是全局营销元数据，与登录实例无关，不进入 registry。
     await this.credentialService.save(LOGIN_ATTRIBUTION_KEY, JSON.stringify(persistAttribution));
   }
 
@@ -282,32 +207,17 @@ export class OAuthCredentialRepo {
   }
 
   async clearActiveSession(): Promise<void> {
-    const activeProvider = await this.loadActiveProvider();
-    if (activeProvider) {
-      await this.clearProvider(activeProvider);
+    const ref = await this.store.resolveActiveRef();
+    if (ref) {
+      await this.store.clearAccount(ref);
     }
-    await this.credentialService.delete(ACTIVE_PROVIDER_KEY);
   }
 
   async loadTokenSet(provider: OAuthProviderId): Promise<OAuthTokenSet | null> {
     try {
-      const accessToken = await this.credentialService.load(accessTokenKey(provider));
-      if (!accessToken) {
-        return null;
-      }
-
-      const refreshToken = await this.credentialService.load(refreshTokenKey(provider));
-
-      const zcodeJwtToken =
-        provider === ZAI_PROVIDER_ID || provider === BIGMODEL_PROVIDER_ID
-          ? await this.credentialService.load(ZCODE_JWT_TOKEN_KEY)
-          : null;
-
-      return {
-        accessToken,
-        ...(refreshToken ? { refreshToken } : {}),
-        ...(zcodeJwtToken ? { zcodeJwtToken } : {}),
-      };
+      // 旧版语义：provider 域镜像直读，不要求 active 指针
+      // （per-account 冻结副本仅服务账号切换流，不参与 provider 域读取）
+      return await this.store.readActiveMirrorTokenSet(provider);
     } catch (error) {
       if (!isCredentialDecryptError(error)) {
         throw error;
@@ -319,37 +229,14 @@ export class OAuthCredentialRepo {
   }
 
   async saveTokenSet(provider: OAuthProviderId, tokenSet: OAuthTokenSet): Promise<void> {
-    await this.credentialService.save(accessTokenKey(provider), tokenSet.accessToken);
-
-    if (tokenSet.refreshToken) {
-      await this.credentialService.save(refreshTokenKey(provider), tokenSet.refreshToken);
-    } else {
-      await this.credentialService.delete(refreshTokenKey(provider));
-    }
-
-    if (provider === ZAI_PROVIDER_ID || provider === BIGMODEL_PROVIDER_ID) {
-      if (tokenSet.zcodeJwtToken) {
-        // BigModel Start Plan 与 Z.ai Start Plan 一样消费 zcode JWT。
-        // JWT 必须在 OAuth callback 阶段随 tokenSet 落盘，后续 balance/runtime 只读取它，
-        // 不能再拿 BigModel access token 拼另一个 /oauth/token body 临时兑换。
-        await this.credentialService.save(ZCODE_JWT_TOKEN_KEY, tokenSet.zcodeJwtToken);
-      } else {
-        await this.credentialService.delete(ZCODE_JWT_TOKEN_KEY);
-      }
-    }
+    // 旧版语义：无条件写该 provider 的 legacy 槽位（首登、refresh 写回、回滚恢复共用）
+    await this.store.putMirrorTokenSet(provider, tokenSet);
   }
 
   async loadUserProfile(provider: OAuthProviderId): Promise<OAuthUserProfile | null> {
-    return this.loadUserProfileFromKey(userInfoKey(provider), provider);
-  }
-
-  private async loadUserProfileFromKey(
-    key: string,
-    provider?: OAuthProviderId,
-  ): Promise<OAuthUserProfile | null> {
-    let raw: string | null;
     try {
-      raw = await this.credentialService.load(key);
+      // 旧版语义：provider 域镜像槽位直读，不要求 active 指针或注册条目
+      return await this.store.loadProviderProfileFromMirror(provider);
     } catch (error) {
       if (!isCredentialDecryptError(error)) {
         throw error;
@@ -358,67 +245,59 @@ export class OAuthCredentialRepo {
       await this.clearCorruptOAuthSession();
       return null;
     }
-
-    if (!raw) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as Partial<OAuthUserProfile>;
-      if (
-        typeof parsed.id === "string" &&
-        typeof parsed.username === "string" &&
-        typeof parsed.displayName === "string"
-      ) {
-        const avatarUrl = typeof parsed.avatarUrl === "string" ? parsed.avatarUrl : undefined;
-        const rawProfile =
-          typeof parsed.rawProfile === "object" && parsed.rawProfile !== null
-            ? parsed.rawProfile
-            : undefined;
-        return {
-          id: parsed.id,
-          username: parsed.username,
-          displayName: parsed.displayName,
-          ...(avatarUrl ? { avatarUrl } : {}),
-          ...(rawProfile ? { rawProfile } : {}),
-        };
-      }
-
-      if (provider === ZAI_PROVIDER_ID && typeof parsed === "object" && parsed !== null) {
-        // ZAI user_info 现在按后端 data.user 原样持久化，
-        // 启动恢复时需要从 user_id/name/avatar 重新映射展示字段。
-        const zaiProfile = toOAuthUserProfileFromRawZaiUser(parsed as Record<string, unknown>);
-        if (zaiProfile) {
-          return zaiProfile;
-        }
-      }
-    } catch {
-      // ignore parse error and fallback to null
-    }
-
-    return null;
   }
 
   async saveUserProfile(provider: OAuthProviderId, profile: OAuthUserProfile): Promise<void> {
-    // ZAI 后端返回的 data.user 是后续账号态排查与恢复的源数据，
-    // 之前只保存归一化展示字段会丢失 email/name/avatar 原始结构。
-    const persistProfile =
-      provider === ZAI_PROVIDER_ID && profile.rawProfile ? profile.rawProfile : profile;
+    // 按 profile 身份路由，而非"该 provider 的主账号"：同 provider 的第二个账号
+    // 登录时不得覆盖已有条目的 profile（registry 依 accountId 区分登录实例）。
+    const accountId = deriveAccountId(profile);
+    const ref = await this.store.resolvePrimaryRefFor(provider);
+    if (ref && ref.accountId === accountId) {
+      // ZAI 后端返回的 data.user 是后续账号态排查与恢复的源数据，
+      // 之前只保存归一化展示字段会丢失 email/name/avatar 原始结构。
+      await this.store.putAccountProfile(ref, profile);
+      return;
+    }
 
-    await this.credentialService.save(userInfoKey(provider), JSON.stringify(persistProfile));
+    const pendingRef = await this.store.resolvePendingRefFor(provider);
+    if (pendingRef) {
+      // 首登两段写入的后半段：profile 落地触发 pending 转正为真实账号。
+      await this.store.putAccountProfile(pendingRef, profile);
+      return;
+    }
+
+    // 新账号（或重登非主账号）：token 已在镜像，以 profile 收编/更新对应条目。
+    await this.store.adoptMirrorTokensAsAccount(provider, profile);
   }
 
   async clearUserProfile(provider: OAuthProviderId): Promise<void> {
-    await this.credentialService.delete(userInfoKey(provider));
+    const ref = await this.store.resolvePrimaryRefFor(provider);
+    if (ref) {
+      await this.store.removeAccountProfile(ref);
+      return;
+    }
+
+    await this.credentialService.delete(legacyUserInfoKey(provider));
   }
 
   async clearProvider(provider: OAuthProviderId): Promise<void> {
-    await this.credentialService.delete(accessTokenKey(provider));
-    await this.credentialService.delete(refreshTokenKey(provider));
-    await this.credentialService.delete(userInfoKey(provider));
-    if (shouldClearZcodeJwtOnLogout(provider)) {
-      await this.credentialService.delete(ZCODE_JWT_TOKEN_KEY);
+    const ref = await this.store.resolvePrimaryRefFor(provider);
+    if (ref) {
+      // 活跃账号由 clearAccount 连带清指针与全量镜像（含共享 zcodejwttoken）；
+      // 非活跃条目只清自身 registry 数据，再补清历史残槽防止 reconcile 僵尸回导。
+      const activeRef = await this.store.resolveActiveRef();
+      const wasActive = activeRef !== null && sameRef(activeRef, ref);
+      await this.store.clearAccount(ref);
+      if (!wasActive) {
+        await this.store.clearStaleLegacyAccountSlots(provider);
+      }
+    } else {
+      // 无注册条目：保持旧版裸清理（含共享 zcodejwttoken；
+      // persistOAuthSession 依赖"先清旧 provider 再写新 token"的顺序语义）。
+      await this.store.clearLegacyProviderSlotsWithJwt(provider);
     }
+    // pending 只是指针，随 provider 清理一并摘除，避免僵尸暂存身份。
+    await this.store.clearPendingPointerFor(provider);
   }
 
   async clearAll(providers: OAuthProviderId[]): Promise<void> {
@@ -426,17 +305,42 @@ export class OAuthCredentialRepo {
       await this.clearProvider(provider);
     }
 
-    await this.saveActiveProvider(null);
+    await this.store.ensureNoActivePointer();
+  }
+
+  /** 已知登录账号列表（活跃账号排首位）；账号切换器的数据源。 */
+  async listAccounts() {
+    return this.store.listAccounts();
+  }
+
+  /** 账号切换事务核心：冻结 outgoing → 激活 → 解冻 incoming（见 OAuthAccountStore）。 */
+  async switchToAccount(ref: OAuthAccountRef) {
+    await this.store.switchToAccount(ref);
+  }
+
+  /** 登录写入共享 zcodejwttoken 槽位前冻结当前活跃账号 token。 */
+  async freezeCurrentActiveTokens() {
+    await this.store.freezeCurrentActiveTokens();
+  }
+
+  /** 当前活跃指针（含 pending；账号切换回滚需要恢复到 ref 粒度）。 */
+  async getActiveAccountRef(): Promise<OAuthAccountRef | null> {
+    return this.store.resolveActiveRef();
+  }
+
+  /** 按登录实例激活（persistOAuthSession 落账 / 切换回滚共用）。 */
+  async activateAccount(ref: OAuthAccountRef) {
+    await this.store.activateRef(ref);
   }
 
   private async clearCorruptOAuthSession(): Promise<void> {
     // AES-GCM 解密失败说明当前运行时已经无法信任本地 OAuth 登录态。
-    // 等价于强制登出已注册 OAuth provider：先清 provider 命名空间与共享 zcode JWT，
-    // 再通知 service 层清理 Start/Coding Plan 这类派生模型凭据，同时避免误删 SSH 等其他独立凭据。
-    for (const provider of this.knownProviderIds) {
-      await this.clearProvider(provider);
-    }
-    await this.credentialService.delete(ACTIVE_PROVIDER_KEY);
+    // 等价于强制登出全部 OAuth provider：registry、per-account key 与 legacy
+    // 镜像一并清理，再通知 service 层清理 Start/Coding Plan 这类派生模型凭据，
+    // 同时避免误删 SSH 等其他独立凭据。
+    // 已知代价：registry 化后一次解密失败会清空所有已存账号（旧版单账号行为的
+    // 等价放大）；按账号隔离的 quarantine 策略留待后续实验评估。
+    await this.store.clearEverything();
     try {
       await this.onCorruptOAuthSessionCleared?.(this.knownProviderIds);
     } catch (error) {
@@ -445,8 +349,4 @@ export class OAuthCredentialRepo {
       log.warn(undefined, "clear derived provider keys after corrupt OAuth session failed", error);
     }
   }
-}
-
-function shouldClearZcodeJwtOnLogout(provider: OAuthProviderId): boolean {
-  return provider === ZAI_PROVIDER_ID || provider === BIGMODEL_PROVIDER_ID;
 }

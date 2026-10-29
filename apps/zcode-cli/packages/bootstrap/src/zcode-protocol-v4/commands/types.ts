@@ -143,6 +143,20 @@ export interface V4CommandCoreHost {
   getConversationControl?(
     sessionId: string,
   ): { phase: SessionPhase; lastError: SessionErrorInfo | null } | null;
+  /**
+   * On-demand hydrated control read (fork resumeTurn fallback, ADR-029).
+   * Consulted only when the core projection and getConversationControl are both
+   * empty — i.e. sessions no renderer ever hydrated, which is exactly the
+   * ADR-028 host-dispatch population. Data source = the v4 projection built
+   * through the same pipeline a renderer subscribe uses (cold-ready /
+   * hydration, ready-flight deduped), then the same narrow {phase, lastError}
+   * face. Optional: hosts without it keep ADR-014 behavior (the rejection
+   * surfaces; the schedule lane re-verifies persisted truth before settling it
+   * as obsolete — G6).
+   */
+  ensureHydratedConversationControl?(
+    sessionId: string,
+  ): Promise<{ phase: SessionPhase; lastError: SessionErrorInfo | null } | null>;
   /** runtime event notification 后，等待目标 event 真正完成 reorder drain + projection apply。 */
   waitForProjectionEventCommit?(
     sessionId: string,

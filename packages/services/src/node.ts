@@ -284,6 +284,7 @@ export {
   decideResumeTurnDispatch,
   getActiveQuotaBuckets,
   allBucketsExhausted,
+  classifyResumeTurnGuardRejection,
   isEntitlementQuotaAvailable,
   isQuotaClassifiedResumeError,
   nextEntitlementResetAt,
