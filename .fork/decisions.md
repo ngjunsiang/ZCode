@@ -1127,3 +1127,30 @@ from the recon map — do not re-derive it.
 **Alternatives rejected.** Adopt 42 now (maintenance ownership declined);
 patch CA trust in-app (new unvalidated divergence surface); rely on 41.x
 point releases (per the threat model the fix is not backported).
+
+## ADR-034: hydra dev line consolidated into the patch lines {2026-10-29}
+
+User decision 2026-10-29: hydra is stable — its content becomes the patch
+line's content; the separate dev line is retired.
+
+- Merges (hydra → patch; merged trees outside `.fork/` verified byte-identical
+  to the gate-green hydra tips — ADR-032 stop-1/stop-2 suites, PR #87/#88
+  gates): `patch/3.16.2` ← `hydra/patch/3.16.2` (`5b9cc63b`), `patch/3.16.1` ←
+  `hydra/patch/3.16.1` (`cc0e9613`), `patch/3.15.1` ← `hydra/patch/3.15.1`
+  (`13a396aa`). All merge conflicts were `.fork/`-only.
+- Branches removed (local + origin): `hydra/patch/3.15.1`, `hydra/patch/3.16.1`,
+  `hydra/patch/3.16.2`; plus origin-only `hydra/patch/3.15.3` (tip `d4eb414a`)
+  without a merge — the 3.15.2/3.15.3 port line was already
+  superseded-upstream (ADR-031 verdicts stand); its one re-used patch
+  (`9bdcdd95`) was re-derived as U78's 3.16.x adaptation. Hydra tips except
+  3.15.3's remain reachable as merge parents; 3.15.3's is recorded here by SHA.
+- I-11 (multi-account) is expressed on every patch line from now on; the
+  "hydra-only by design" statuses flip in this commit. U83's AGENTS.md
+  addendum is re-scoped to the fork patch lines.
+- The ZCode-hydra worktree is retired and the zcode-hydra PKGBUILD with it
+  (its build source was the worktree's committed HEAD). The daily driver
+  collapses into the zcoder package: `v3.16.2-fork.2` is built from the
+  consolidated `patch/3.16.2` per ADR-024 identity rules.
+- Numbering continues globally: next free **U87 / N26 / ADR-035**. Future dev
+  happens directly on `patch/<release>` (short-lived feature branches off it,
+  as the exp branches were); there is no standing dev line.
