@@ -988,3 +988,142 @@ Manual desktop smoke of the resume family remains outstanding (pre-existing
 debt). Push waits for the user's go (fork-no-upstream-push).
 
 **Not contributed upstream.** Fork-internal process.
+
+## ADR-032: hydra 3.16.x port + C-1 promotion  {2026-10-23}
+
+**Context.** Hydra (the `zcode-hydra` test package built from the hydra dev
+line) is the user's daily driver — the exp multi-account series (exp-01..04)
+is load-bearing there, and the 3.15.x hydra line died with the 3.16.x vendor
+jump. The 2026-10-22 triage and ADR-031 had classified the exps "not ported —
+promotion = redesign, re-decide separately". The user promoted C-1 to
+intent-level work on 2026-10-23 and chose the two-stop branch shape
+(`hydra/patch/3.16.1` then `hydra/patch/3.16.2`) over the offered
+single-stop collapse, with full scope (all four exps + the AGENTS.md fork
+addendum).
+
+**Decision.**
+1. **C-1 → I-11** (INTENTS.md): multi-account is a first-class login
+   topology, hydra-only by design. The patch line stays minimal; the exp
+   journal in `.fork/hydra/RESEARCH.md` remains the research history.
+2. **`hydra/patch/3.16.1`** = the 41-commit shared series (from
+   `patch/3.16.2`) replayed commit-by-commit onto vendor `0a1fc56d`, plus the
+   promoted set U78–U83/N24–N25. `hydra/patch/3.16.2` = same content on
+   vendor `3c5b2276` (stop 2, built after stop-1 gates).
+3. **Replay SHAs are recorded here, not per-row**: the U1–U77 rows keep the
+   patch line's canonical `landed (3.16.2: …)` anchors; the hydra replay of
+   the shared series produced parallel SHAs (range
+   `9d1e2fc6..189e9fb4` on `hydra/patch/3.16.1`, one commit per source
+   commit, same order). Exp rows carry hydra SHAs directly.
+
+**Port-time findings (stop 1).**
+- The feared exp-03 sidebar redesign did not materialize: the account pill
+  and its icon cluster survived the 3.16.1 project-sidebar rework inside
+  `WorkspaceSidebarFooter.tsx`; the switcher re-anchored in place and only
+  `Root.tsx`'s surrounding remote-workspace JSX drifted.
+- `9bdcdd95` was re-derived, not cherry-picked: 3.16.x reads cached restore
+  tokens at two sites — `oauthService.restoreCachedSessionState`'s inline
+  dual-token batch read (self-contained local key consts; untouched, correct
+  under the registry because the mirror keeps legacy slots fresh) and the
+  repo's `loadCachedSessionTokens` decrypt-fallback reader (native at
+  3.16.x, absent in exp-01's base — the replay left it referencing removed
+  identifiers; re-pointed to the store's exported legacy key helpers,
+  `5059f4d5`).
+- U76's 3.16.1 replay resolution: the upstream
+  `workflow-mode-user-choice-unmanaged-edit` exception is 3.16.2-only vendor
+  content and was kept out; a stray closing conflict marker slipped into the
+  first resolution and broke YAML parsing (`5a218207` fixup).
+- The two exp-new files (`oauthAccountStore.ts`, `useAccountSwitcher.ts`)
+  hit the unmanaged-new-file gate → U82 per-file exceptions (U76
+  discipline).
+- exp-04: 3.16.x trimmed the 3.15.1-era login markup tests; only the
+  predicate test re-anchored.
+
+**Outcome (stop 1).** `hydra/patch/3.16.1`: replay 41 commits (1 conflict) +
+7 promoted commits + U82 + ADR-032 docs + U84 + fmt (`d32880a1`).
+Verification, honestly reported: root typecheck green; CLI typecheck 32/32
+via inner turbo (no inner pnpm install); lint 0 errors (98 warnings = vendor
+baseline); `db:schema:check` green on both baselines (U77's replayed baseline
+is correct at 3.16.1 — the vendor delta did not touch the migrations module,
+so 0007 is right at both versions); architecture check 0 after U82; services
+suite 3511 tests → 2 ledger-assertion failures in the U34/U35 pattern's
+missed third sibling (`remoteSchemaMigrations.test.ts`, fixed as U84 — note
+`patch/3.16.2` still carries that stale assertion, masked by the whole-suite
+push rule; flagged for the next patch-line touch) then all green; full
+ui/shared/desktop batch 14,626 passed / 12 skipped / 0 failed; CLI node:test
+18+13 (matches ADR-031); oxfmt clean on all 79 fork-touched files after
+normalizing 5 drifters. Stop 2 (`hydra/patch/3.16.2`) recorded in the PATCHES
+sync log. Push waits for the user's go (fork-no-upstream-push).
+
+**Outcome (stop 2, same day).** `hydra/patch/3.16.2` = `patch/3.16.2`
+(`d11d7610`) + the promoted set cherry-picked clean from stop 1 — 12 commits,
+zero conflicts (`26d895d9..41f63b5a`; Root.tsx and loginPage.test.ts applied
+without re-resolution because Root.tsx is identical across the 3.16.1/3.16.2
+vendor delta and the 3.16.2 test file carries the same trim). Only doc-level
+adaptation: per-branch SHAs in the U78–U84/N24–N25 rows. The fmt commit
+re-normalizes two shared-series files (`command.ts`
+`editUserQuery` indentation, `autoUpdaterReadyState.test.ts`) to what
+3.16.2's oxfmt actually wants — `patch/3.16.2`'s own copies still carry that
+pre-existing drift (never gated; vendor-baseline fmt failures are
+out-of-scope). Verification, honestly reported: root typecheck green; CLI
+typecheck 32/32 (turbo cache valid — the exp set adds no CLI changes and this
+base was typechecked at ADR-031); lint 0 errors (98 warnings = vendor
+baseline); `db:schema:check` green; architecture check 0; full
+services+ui/shared/desktop unit batch 18,250 passed / 21 skipped / 0 failed;
+CLI node:test 18+13; oxfmt clean on all 19 promoted-set files. Both hydra
+branches are LOCAL-ONLY — push waits for the user's go
+(fork-no-upstream-push), with `ZCODE_AFFECTED_TEST_BASE=origin/main` for the
+new-branch affected gate.
+
+## ADR-033: Stay on Electron 41 — accept the certifi CA exposure; heightened exploit watch  {Confirmed — user-selected 2026-10-25}
+
+**Context.** The eMudhra/emSign intermediate-CA key compromise (published
+2026-10-17/20; keys effectively public since 2025-04 via flawed key
+generation) leaves every client whose *bundled* CA store still trusts the
+compromised chains open to on-path MITM; revocation is no safety net for
+non-browser clients. The machine-level sweep
+(`~/sysinfo/incidents/2026-10-25-emudhra-ca-compromise.md`, checker-host
+verified) marked ZCode desktop **Electron 41.0.3** — in both the `zcoder`
+daily driver and the `zcode-hydra` test build — **vulnerable,
+upstream-gated**: the 41 line was never patched upstream, and the first
+fixed Electron versions are 42.11.16 / 43.8.1 / 44.9.1. Upstream
+zai-org/ZCode still pins 41.0.3 (checked 2026-10-25 via GitHub API), so no
+vendor pull delivers the fix either.
+
+**Recon (2026-10-25).** A complete migration probe exists and is kept:
+branch `recon/electron-42` (worktree `../ZCode-hydra-recon-e42`, commit
+`64fbf7df`), findings in `.fork/drafts/electron-42-recon.md`. Bottom line:
+the API-level migration is small (3-file pin diff; typecheck/lint/29 targeted
+unit tests green; Node stays on 24.x so native ABI and the
+`ELECTRON_RUN_AS_NODE` agent bundle are untouched), and the real cost is
+install-flow rework (42 removed the postinstall binary download — bootstrap,
+CI, and the zcode-hydra PKGBUILD need an explicit install step) plus runtime
+re-validation (wdio service matrix, ARMS Crashpad parsing, playwright-core
+pin, KDE tray matrix) — and permanent upstream divergence until upstream
+moves.
+
+**Decision.** Stay on Electron 41.0.3; accept the exposure; treat this vuln
+class at heightened alert. The maintainer explicitly declines ownership of
+an Electron major bump for now.
+
+**Watch posture (alert level: elevated).**
+
+| Signal | Source | Action |
+|---|---|---|
+| Electron security release **backporting the eMudhra/emSign trust update to 41.x** — none exists today (incident report: the 41 line was never patched); check every Electron security post, treat as unlikely | electronjs.org release feed / Electron GHSA | pin bump in-major (low friction; note 41.10.7 point releases do NOT carry this fix) |
+| Public exploit / KEV entry or attack tooling using eMudhra/emSign chains against Electron/bundled-store clients | CISA KEV, GitHub advisories, security press | escalate: execute the recon migration map on the hydra line out of band |
+| eMudhra/emSign event developments (newly named chains, revocation/trust-store changes) | emudhra.we-have-a-problem.com, CT monitoring | re-probe the running app: checker-host fetch returning HTTP 200 = still exposed; TLS error = safe (package/lockfile scans cannot see compiled-in roots) |
+| upstream bumps to ≥42.11.16 | zai-org/ZCode `packages/desktop/package.json` | ride the vendor pull; the recon checklist enumerates the validation debt |
+
+**Detection.** The Fri 21:30 PKGBUILD-review and Sat 10:00 vulnscan
+automations carry this item via `~/sysinfo/SECURITY-INVENTORY.md` R14; the
+checker-host probe tests the compiled-in store directly. The recon pin
+(42.11.18) is ≥ the first fixed version (42.11.16), so the preserved map
+targets a fixed runtime.
+
+**Revisit triggers.** Any watch action firing; an upstream bump; or the
+maintainer choosing to take on the maintenance burden. In every case start
+from the recon map — do not re-derive it.
+
+**Alternatives rejected.** Adopt 42 now (maintenance ownership declined);
+patch CA trust in-app (new unvalidated divergence surface); rely on 41.x
+point releases (per the threat model the fix is not backported).

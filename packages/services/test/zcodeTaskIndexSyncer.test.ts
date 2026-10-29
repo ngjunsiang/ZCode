@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Emitter, type Event } from "@zcode/rpc";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   SessionsIndexTopicWireFrame,
   IZCodeAgentService,
@@ -37,6 +37,13 @@ import {
 let tempDir: string;
 // 跟踪当前测试的 env，用于 afterEach 清理
 let currentEnv: TestEnv | undefined;
+// U85 (2026-10-24 data incident): between afterEach's setDataBaseDir(null) and the
+// next beforeEach, a lazy repo factory (e.g. zcodeTaskServiceAdapter's
+// `taskIndexRepo ?? new TaskIndexRepo()`) can resolve the developer's real
+// ~/.zcode/v2/tasks-index.sqlite; its first use silently consumes the one-shot
+// project migration (0005/0006) with no settings. Keep the window pointed at a
+// file-lifetime sandbox; the real clear happens in afterAll.
+const idleSandboxDir = mkdtempSync(join(tmpdir(), "zcode-task-index-syncer-idle-"));
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "zcode-task-index-syncer-"));
@@ -47,7 +54,7 @@ afterEach(async () => {
   // 先关闭 repo 确保 SQLite 连接释放，避免 Windows EPERM
   currentEnv?.repo?.close();
   currentEnv = undefined;
-  setDataBaseDir(null);
+  setDataBaseDir(idleSandboxDir);
   // Windows 需要等待一下让文件句柄释放
   await new Promise((resolve) => setTimeout(resolve, 50));
   try {
@@ -55,6 +62,11 @@ afterEach(async () => {
   } catch {
     // Windows 有时仍会有权限问题，忽略即可
   }
+});
+
+afterAll(() => {
+  setDataBaseDir(null);
+  rmSync(idleSandboxDir, { recursive: true, force: true });
 });
 
 interface TestEnv {

@@ -85,6 +85,20 @@ vi.mock("@/settings/model-provider-section/useEnterpriseCodingPlanProducts.js", 
   }),
 }));
 
+// 修复原因：exp-03（33445056）给 WorkspaceSidebarFooter 接入了 useAccountSwitcher，
+// 该 hook 经 useServices 依赖 ServiceProvider；本文件 3 个渲染用例用
+// renderToStaticMarkup 裸渲染组件、无 Provider 包裹，挂载即抛
+// "useServices 必须在 ServiceProvider 内使用"。依据本文件其余 context hooks
+// 的既有做法改为 mock；渲染用例只断言 tooltip/徽标 markup，不触达账号切换行为。
+vi.mock("@/hooks/useAccountSwitcher.js", () => ({
+  useAccountSwitcher: () => ({
+    accounts: [],
+    isSwitching: false,
+    refresh: vi.fn(),
+    switchTo: vi.fn(async () => false),
+  }),
+}));
+
 describe("WorkspaceSidebarFooter web remote control tooltip", () => {
   beforeEach(() => {
     mockFooterSettings.current = {

@@ -142,6 +142,25 @@ create/subscribe races must never silently drop the initial prompt.
   own buffered replay emitter (same design, bounded at 1MB).
 - Status: upstream-covered; watch on remote-terminal changes.
 
+### I-11 Multi-account is a first-class login topology
+Several platform logins (ZAI/BigModel OAuth identities) coexist in one shared
+credentials file; switching accounts is a serialized transaction that keeps the
+active-login mirror bit-identical with upstream's single-login semantics, so
+the official build and the CLI keep working on the same file. The switcher
+lives beside the sidebar account pill; add-account reuses the always-available
+login entry. Known upstream constraint honored, not fought: the shared
+`zcodejwttoken` slot is clobbered cross-provider — switch flows freeze before
+write; startup restore reads the active account through the legacy slots the
+mirror keeps fresh.
+- Expressed by: U78–U82, N24–N25 — hydra lines only (promoted from C-1 /
+  exp-01–04 by user decision 2026-10-23, ADR-032; ported to 3.16.x same day).
+  The 3.16.x expression needed no sidebar redesign: the account pill and its
+  icon cluster survived the project-sidebar rework inside
+  `WorkspaceSidebarFooter.tsx`; only `Root.tsx`'s surrounding JSX re-anchored.
+- Status: hydra-only by design — the patch/3.16.2 line does not carry the
+  feature (the daily driver runs hydra; the patch line stays minimal until
+  the user says otherwise).
+
 ### I-12 The Node runtime pin stays on a bundled-CA-fixed Node
 Dev, gates, and the SEA release all execute on the pinned Node, whose bundled
 CA store is compiled in — lockfile scanners cannot see it. The pin must
@@ -163,9 +182,6 @@ same event is ADR-033.
   24.14.0 was checker-host confirmed vulnerable; 24.22.1 verified in-gates).
 
 ## Candidates (not yet intentions — decide)
-- C-1 Multi-account support (coexisting logins, account switcher,
-  flash-close fix; exp-02–04, hydra-only). The 3.16.1 sidebar rework deleted
-  their anchors — promoting means a redesign, not a port.
 - C-2 Web/mobile parity for Auto-Resume — blocked on upstream automation RPC
   for web-remote; deliberately desktop-only for now (I-2 scope note).
 
