@@ -83,9 +83,10 @@
 
 ---
 
-## Fork Addendum — hydra line only (append-only, keep last)
+## Fork Addendum — fork patch lines (append-only, keep last)
 
-This trailing block is a hydra-fork amendment (added 2026-10-18). Everything
+This trailing block is a fork amendment (added 2026-10-18 on the hydra
+line; scope extended to all fork patch lines 2026-10-29, ADR-034). Everything
 above is the upstream baseline text. Keep this block LAST in the file and do
 not encode fork-local rules by editing baseline sections — append here
 instead, so upstream AGENTS.md updates merge/rebase cleanly around it. If an

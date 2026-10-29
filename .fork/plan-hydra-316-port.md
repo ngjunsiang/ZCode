@@ -1,5 +1,8 @@
 # Plan: hydra dev line onto 3.16.x — hydra/patch/3.16.1 → hydra/patch/3.16.2
 
+> **RETIRED 2026-10-29 (ADR-034): the hydra/patch lines were consolidated
+> into the patch lines and deleted; this plan is historical.**
+
 **Handoff written 2026-10-23 (session after the ADR-031 port). Execute in a
 fresh session — it starts in the ZCode-hydra worktree, where this file is
 mirrored on `hydra/patch/3.15.1` (cherry-pick); THIS copy on `patch/3.16.2`

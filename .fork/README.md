@@ -94,7 +94,14 @@ implementation-scoping notes in `decisions.md` (ADR-007 note + "implementation
 outcomes"). Manual desktop smoke (spec scenarios 1–8) is **not yet executed** —
 see plan Phase 4.
 
-## Branch coverage (checked 2026-10-14)
+## Branch coverage (checked 2026-10-14; updated 2026-10-29 — ADR-034)
+
+2026-10-29 (ADR-034): the hydra dev line was consolidated into the patch
+lines — this branch now also carries the multi-account feature (U78–U81,
+N24–N25, I-11) via merge `13a396aa`; `hydra/patch/*` branches were deleted
+(origin-only `hydra/patch/3.15.3`, tip `d4eb414a`, deleted as
+superseded-upstream without merging). The table below is the historical
+3.14.3↔3.15.1 parity record.
 
 Both `patch/3.14.3` and `patch/3.15.1` carry the core fork series (resumeTurn,
 auto-resume, quota-banner ports) under per-branch SHAs; `main` stays a pure

@@ -47,7 +47,8 @@ surfaces get it only where the automation RPC exists.
 - Expressed by: U16–U35, N6–N9 (v1); U59–U65, N16–N17 (default-on, ADR-026);
   U44/U45 + U67/N19 (reliability, ADR-018/019); U68–U73/N20–N21 (host-side,
   ADR-028); U74–U75/N22–N23 (hydration fallback + obsolete settlement,
-  ADR-029) — last four groups currently hydra-only.
+  ADR-029) — all groups expressed on this line (ADR-034 consolidation
+  merge `13a396aa`).
 - Status @3.16.1: fully survives — zero upstream code.
 
 ### I-3 Failure handling is honest, in both directions
@@ -126,10 +127,24 @@ create/subscribe races must never silently drop the initial prompt.
   own buffered replay emitter (same design, bounded at 1MB).
 - Status: upstream-covered; watch on remote-terminal changes.
 
+### I-11 Multi-account is a first-class login topology
+Several platform logins (ZAI/BigModel OAuth identities) coexist in one shared
+credentials file; switching accounts is a serialized transaction that keeps the
+active-login mirror bit-identical with upstream's single-login semantics, so
+the official build and the CLI keep working on the same file. The switcher
+lives beside the sidebar account pill; add-account reuses the always-available
+login entry. Known upstream constraint honored, not fought: the shared
+`zcodejwttoken` slot is clobbered cross-provider — switch flows freeze before
+write; startup restore reads the active account through the legacy slots the
+mirror keeps fresh.
+- Expressed by: U78–U81, N24–N25 — the 3.15.1-form expression landed on
+  hydra/patch/3.15.1 as exp-01–04 (promoted from C-1 by user decision
+  2026-10-23, ADR-032) and consolidated onto this line by the ADR-034 merge
+  `13a396aa` (2026-10-29).
+- Status: intention; expressed on every patch line since the ADR-034
+  consolidation (2026-10-29) — the hydra/patch branch split is retired.
+
 ## Candidates (not yet intentions — decide)
-- C-1 Multi-account support (coexisting logins, account switcher,
-  flash-close fix; exp-02–04, hydra-only). The 3.16.1 sidebar rework deleted
-  their anchors — promoting means a redesign, not a port.
 - C-2 Web/mobile parity for Auto-Resume — blocked on upstream automation RPC
   for web-remote; deliberately desktop-only for now (I-2 scope note).
 
