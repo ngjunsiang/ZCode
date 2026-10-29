@@ -152,14 +152,14 @@ login entry. Known upstream constraint honored, not fought: the shared
 `zcodejwttoken` slot is clobbered cross-provider — switch flows freeze before
 write; startup restore reads the active account through the legacy slots the
 mirror keeps fresh.
-- Expressed by: U78–U82, N24–N25 — hydra lines only (promoted from C-1 /
-  exp-01–04 by user decision 2026-10-23, ADR-032; ported to 3.16.x same day).
+- Expressed by: U78–U82, N24–N25 (promoted from C-1 / exp-01–04 by user
+  decision 2026-10-23, ADR-032; ported to 3.16.x same day; consolidated onto
+  every patch line 2026-10-29, ADR-034).
   The 3.16.x expression needed no sidebar redesign: the account pill and its
   icon cluster survived the project-sidebar rework inside
   `WorkspaceSidebarFooter.tsx`; only `Root.tsx`'s surrounding JSX re-anchored.
-- Status: hydra-only by design — the patch/3.16.2 line does not carry the
-  feature (the daily driver runs hydra; the patch line stays minimal until
-  the user says otherwise).
+- Status: intention; expressed on every patch line since the ADR-034
+  consolidation (2026-10-29) — the hydra/patch branch split is retired.
 
 ### I-12 The Node runtime pin stays on a bundled-CA-fixed Node
 Dev, gates, and the SEA release all execute on the pinned Node, whose bundled

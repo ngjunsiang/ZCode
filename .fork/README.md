@@ -20,7 +20,7 @@ with the branch checkout.
 | `dev.sh` | **launch entrypoint, Linux/macOS**: `--check` / `--isolated` / `--stack` / `--app` / `--own-deeplink` (session-scoped zcode:// handler so OAuth login completes inside dev; auto-removed on exit; `--deeplink-cleanup` = manual repair) / `--full-setup` / `--no-setup` / `--no-agent-cache` |
 | `dev.ps1` | **launch entrypoint, Windows** (same semantics; `-Stack` / `-App` / `-OwnDeeplink` / `-DeeplinkCleanup` etc.). Deeplink + overall: untested — first Windows run is its smoke test |
 | `drafts/` | investigated-but-unlanded patch write-ups (e.g. `membership-cache-3.15.1.md`) |
-| `plan-hydra-316-port.md` | **handoff plan: hydra dev line onto 3.16.1/3.16.2** (C-1 promotion; next session's entry point) |
+| `plan-hydra-316-port.md` | historical: hydra 3.16.x port handoff plan (executed per ADR-032; hydra line retired per ADR-034) |
 | `INTENTS.md` | **the intent charter (ADR-030)**: the durable contract; every patch is a per-version expression of an intention — read before touching PATCHES.md |
 | `PATCHES.md` | **the manifest**: every fork edit to an upstream file, with anchors and re-apply notes |
 | `decisions.md` | decision log (ADR-style); defaults chosen without user input are marked |
@@ -97,19 +97,20 @@ Spec/plan live in `spec-resume-turn.md` / `plan-resume-turn.md`;
 desktop smoke of the resume family (spec scenarios 1–8) was never fully
 executed on 3.15.1 — carry the debt forward.
 
-## Branch coverage (updated 2026-10-23)
+## Branch coverage (updated 2026-10-29 — ADR-034 hydra consolidation)
 
 | branch | role (user-set 2026-10-15) | state |
 | --- | --- | --- |
 | `main` | pure upstream mirror | `3c5b2276` = vendor 3.16.2 |
-| `patch/3.16.2` | **stable working line** | series ported + verified 2026-10-23 (ADR-031); U1–U76/N1–N23, unpushed |
-| `patch/3.16.1` | checkpoint | left pristine pure-vendor `0a1fc56d` |
-| `patch/3.15.1` | frozen stable (rollback) | series U1–U67/N1–N19 through PR #86 + ADR-028 via PR #87 on `origin` (local branch diverged: has unpushed charter `f52de4aa`, lacks PR #87 — reconcile on next touch) |
+| `patch/3.16.2` | **stable working line + daily-driver source** | full series incl. I-11 via the ADR-034 consolidation; U1–U86/N1–N25 |
+| `patch/3.16.1` | checkpoint | full fork series (ADR-034 consolidation merge `cc0e9613`; was pristine vendor + node pin) |
+| `patch/3.15.1` | frozen stable (rollback) | full series incl. the 3.15.1-form multi-account expression (ADR-034 merge `13a396aa`); origin reconcile done |
 | `patch/3.14.3` | frozen (rollback) | U1–U53-era series, retired expressions kept as-is |
-| `hydra/patch/3.15.1` | dev (Windows-driven) | stable + ADR-029 (PR #88) + exp-01..04 + charter |
-| `origin/hydra/patch/3.15.3` | historical dev stop | official 3.15.2/3.15.3 ports U54–U58/ADR-025 + exp series (superseded-upstream at 3.16.2) |
+| `hydra/patch/*` | **removed 2026-10-29 (ADR-034)** | merged into the patch lines; origin-only `hydra/patch/3.15.3` (tip `d4eb414a`, superseded-upstream) deleted without merging |
 
-Rules going forward: new patches land on the authoring branch and get a
+Rules going forward (post-ADR-034: no standing dev line — experimental
+work runs on short-lived branches off `patch/<release>` and lands via the
+manifest): new patches land on the authoring branch and get a
 `pending port` marker until replayed; `.fork/` doc-only commits get
 cherry-picked across live branches to keep trees byte-identical where the
 series is shared. Per ADR-030 the per-version loop is intention-first — check
