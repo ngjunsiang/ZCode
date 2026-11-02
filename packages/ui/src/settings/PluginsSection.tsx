@@ -2,12 +2,11 @@ import { useConfigWorkspaceTargets } from "@/workspace-config-catalog/index.js";
 import { SettingsUserScopeProvider } from "@/settings/SettingsMachine.js";
 /* eslint-disable max-lines -- 共享能力外壳聚合 Scope，并承载 Plugin tabs 与独立 Commands 入口。 */
 import { PluginAddMenu } from "@/conversation-workspace-target/PluginAddMenu.js";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Monitor, Plus, UploadCloud } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Monitor, Plus, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { toast } from "@/components/ui/toast.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
-import { Switch } from "@/components/ui/switch.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { TID_PLUGIN_STORE_BROWSE } from "@zcode/shared/test-ids";
 import type { ZCodePluginInfo, ZCodePluginScope, ZCodePluginUserConfigOption } from "@zcode/shared";
@@ -22,7 +21,6 @@ import { SkillsSection } from "@/settings/SkillsSection.js";
 import { CommandsSection } from "@/settings/CommandsSection.js";
 import { SettingsSearchInput } from "@/settings/SettingsSearchInput.js";
 import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
-import { PluginStoreAvatar } from "@/settings/PluginStoreAvatar.js";
 import { PluginUninstallConfirmDialog } from "@/settings/PluginUninstallConfirmDialog.js";
 import { PluginInstallEmptyState, PluginLoadingState } from "@/settings/PluginInstallEmptyState.js";
 import {
@@ -36,14 +34,13 @@ import {
   PluginStoreDetailView,
 } from "@/settings/PluginStoreDetailView.js";
 import {
+  PluginStoreCard,
   PluginStoreItemMenu,
   PluginStoreOpenUiButton,
-  PluginStoreUpdateBadge,
   PluginStoreUpdateButton,
   type PluginStoreActions,
 } from "@/settings/PluginStoreCard.js";
 import { SettingsBreadcrumbReporter } from "@/settings/SettingsHeaderBreadcrumb.js";
-import { SettingsScopeBadge } from "@/settings/SettingsScopeBadge.js";
 import {
   buildPluginConfigPatch,
   type PluginOptionDraftValue,
@@ -523,115 +520,27 @@ function PluginList({
   ]);
 
   const renderPluginRows = (items: ZCodePluginInfo[]) => (
-    <div className="overflow-hidden rounded-xl bg-surface">
-      {items.map((plugin, index) => (
-        <Fragment key={plugin.id}>
-          {index > 0 ? <div className="h-px bg-border/50" aria-hidden="true" /> : null}
-          <div
-            className="group/plugin-row flex min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-hover"
-            data-testid="plugin-settings-plugin-row"
-            data-plugin-id={plugin.id}
-          >
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-input-border-focused"
-              onClick={() => actions.onOpenDetail(plugin.id)}
-            >
-              <PluginStoreAvatar
-                item={storeItemById.get(plugin.id) ?? { name: plugin.name }}
-                className="size-9 bg-background"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-ui-base font-medium text-foreground">
-                    {resolveManagedPluginDisplay(plugin, storeItemById.get(plugin.id), locale).name}
-                  </span>
-                  <PluginStoreUpdateBadge item={storeItemById.get(plugin.id)} />
-                </div>
-                {resolveManagedPluginDisplay(plugin, storeItemById.get(plugin.id), locale)
-                  .description ? (
-                  <div className="mt-0.5 line-clamp-1 text-ui-sm text-foreground-subtle">
-                    {
-                      resolveManagedPluginDisplay(plugin, storeItemById.get(plugin.id), locale)
-                        .description
-                    }
-                  </div>
-                ) : null}
-                <div className="mt-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <SettingsScopeBadge
-                      scope={plugin.enabledSource ?? "default"}
-                      label={
-                        configScope === "user" && plugin.enabledSource === "user"
-                          ? intl.formatMessage({
-                              id: "settings.plugins.scope.userDefault",
-                            })
-                          : plugin.enabledSource === "user"
-                            ? intl.formatMessage({
-                                id: "settings.plugins.scope.inheritedUser",
-                              })
-                            : plugin.enabledSource === "workspace"
-                              ? intl.formatMessage({
-                                  id: "settings.plugins.scope.workspaceOverride",
-                                })
-                              : undefined
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            </button>
-            <PluginStoreUpdateButton item={storeItemById.get(plugin.id)} actions={actions} />
-            {storeItemById.get(plugin.id) && plugin.packageStatus !== "missing" ? (
-              <PluginStoreItemMenu item={storeItemById.get(plugin.id)!} actions={actions} />
-            ) : null}
-            {storeItemById.get(plugin.id) ? (
-              <PluginStoreOpenUiButton item={storeItemById.get(plugin.id)!} actions={actions} />
-            ) : null}
-            <div className="flex shrink-0 items-center gap-2">
-              {togglingPluginId === plugin.id ? (
-                <Loader2
-                  className="size-4 animate-spin text-foreground-subtle"
-                  data-testid="plugin-settings-enabled-pending"
-                  aria-label={intl.formatMessage(
-                    { id: "settings.plugins.toggle.pending" },
-                    {
-                      plugin: resolveManagedPluginDisplay(
-                        plugin,
-                        storeItemById.get(plugin.id),
-                        locale,
-                      ).name,
-                    },
-                  )}
-                />
-              ) : null}
-              <Switch
-                data-testid="plugin-settings-enabled-switch"
-                data-plugin-id={plugin.id}
-                checked={plugin.enabled}
-                disabled={togglingPluginId === plugin.id}
-                aria-busy={togglingPluginId === plugin.id}
-                aria-label={intl.formatMessage(
-                  {
-                    id: plugin.enabled
-                      ? "settings.plugins.toggle.disable"
-                      : "settings.plugins.toggle.enable",
-                  },
-                  {
-                    plugin: resolveManagedPluginDisplay(
-                      plugin,
-                      storeItemById.get(plugin.id),
-                      locale,
-                    ).name,
-                  },
-                )}
-                onCheckedChange={(enabled) => {
-                  actions.onSetEnabled?.(plugin.id, enabled);
-                }}
-              />
-            </div>
-          </div>
-        </Fragment>
+    <div className="grid grid-cols-1 gap-y-1">
+      {items.map((plugin) => (
+        <div key={plugin.id} data-testid="plugin-settings-plugin-row" data-plugin-id={plugin.id}>
+          {/* 共用市场卡片，避免管理列表额外标签行和图标尺寸导致两处行高不一致。 */}
+          <PluginStoreCard
+            management
+            item={
+              storeItemById.get(plugin.id) ?? {
+                id: plugin.id,
+                name: plugin.name,
+                marketplace: "",
+                installed: true,
+                restorable: false,
+                orphaned: false,
+                info: plugin,
+              }
+            }
+            actions={actions}
+            locale={locale}
+          />
+        </div>
       ))}
     </div>
   );
@@ -818,7 +727,7 @@ function PluginList({
                   data-testid={TID_PLUGIN_STORE_BROWSE}
                   onClick={onAdd}
                 >
-                  {intl.formatMessage({ id: "settings.plugin.plugins.browse" })}
+                  {intl.formatMessage({ id: "chat.plugins.browseMarketplace" })}
                 </Button>
                 <PluginAddMenu
                   testId="plugin-settings-add"
@@ -871,7 +780,7 @@ function PluginList({
                 <Button type="button" variant="default" size="lg" onClick={onAdd}>
                   <Plus aria-hidden="true" data-icon="inline-start" />
                   {intl.formatMessage({
-                    id: "settings.plugin.plugins.browse",
+                    id: "chat.plugins.browseMarketplace",
                   })}
                 </Button>
               ) : undefined
