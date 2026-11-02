@@ -1219,3 +1219,14 @@ tsx — bootstrap 18/18, core 13/13 (after the cycle fix); architecture:check
 family remains outstanding (pre-existing debt, carried).
 
 **Not contributed upstream.** Fork-internal process.
+
+## Retirement record: patch/3.14.3, patch/3.15.1, patch/3.16.1 deleted locally {2026-11-02}
+
+Release-run decision (user-set scope): the three old patch lines are retired
+on this machine — `patch/3.16.2` stays as the rollback line until a newer line
+verifies and installs; `patch/3.17.1` is the ported stable candidate;
+`patch/3.16.3` carries the reconstructed 3.16.3 (ADR-035). Local branches
+deleted; **origin copies are NOT deleted until the user's explicit push-go.**
+Tips at deletion: `patch/3.14.3` = `2b8841d6`, `patch/3.15.1` = `9529fe40`,
+`patch/3.16.1` = `c94c973a`. Recovery: `git branch <name> <sha>` (or from
+origin).

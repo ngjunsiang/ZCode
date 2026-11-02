@@ -104,6 +104,7 @@ executed on 3.15.1 — carry the debt forward.
 | `main` | pure upstream mirror | `a60ba6a7` = vendor 3.17.1 (ff'd 2026-11-02) |
 | `patch/3.17.1` | **stable working line candidate** (pending verify + install) | full series + U87 engineering-manifest re-homing (ADR-036) |
 | `patch/3.16.2` | rollback line until a newer line verifies + installs | full series incl. I-11 via the ADR-034 consolidation; U1–U86/N1–N25 |
+| `patch/3.14.3`, `patch/3.15.1`, `patch/3.16.1` | **deleted locally 2026-11-02 (retired)** — origin copies remain until push-go | tips at deletion: 3.14.3 `2b8841d6`, 3.15.1 `9529fe40`, 3.16.1 `c94c973a` (all pre-ADR-034-era or consolidated states; recoverable from origin or the recorded SHAs) |
 | `patch/3.16.1` | checkpoint | full fork series (ADR-034 consolidation merge `cc0e9613`; was pristine vendor + node pin) |
 | `patch/3.15.1` | frozen stable (rollback) | full series incl. the 3.15.1-form multi-account expression (ADR-034 merge `13a396aa`); origin reconcile done |
 | `patch/3.14.3` | frozen (rollback) | U1–U53-era series, retired expressions kept as-is |
