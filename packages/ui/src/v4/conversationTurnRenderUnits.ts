@@ -65,6 +65,15 @@ function isHookInvocationRow(row: ConversationRow): row is HookInvocationRow {
 }
 
 function isVisibleAssistantWorkRow(row: AssistantWorkRow): boolean {
+  // 包装参数未完整时没有权威目标身份，通用卡片会绕过 Todo 等隐藏规则。
+  // 仅隐藏参数生成期；目标身份到达后复用原 renderer，失败和停止仍保留反馈。
+  if (
+    row.kind === "toolCall" &&
+    row.toolName === "DeferredToolCall" &&
+    row.status === "inputStreaming"
+  ) {
+    return false;
+  }
   if (row.kind === "reasoning" && row.text.trim().length === 0) {
     // reasoning_start/reasoning_end 可能形成空的终态 block；只在共享
     // render-unit 边界裁掉它，避免 completed 状态绕过 streaming renderer 的空行过滤。
