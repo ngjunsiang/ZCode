@@ -907,6 +907,17 @@ exceptions:
       - packages/ui/src/v4/useAutoResume.ts
       - packages/ui/src/v4/useQuotaResume.ts
     reason: Fork-local files that predate the 3.16.x new-files gate; isolated by design (I-9 divergence documentation, .fork/PATCHES.md F-series).
+  # 3.16.3 reconstruction (ADR-035): the two files below are upstream's own
+  # post-snapshot additions (first committed in the vendor 3.16.2 squash) that
+  # the reconstruction edited for the first time; the new-files gate evaluates
+  # changed files only, so they surface here. Upstream code, not fork adoption
+  # — per-file exceptions per the U76 discipline, no directory adoption.
+  - id: recon-3163-remote-cluster-upstream-files
+    rule: unmanaged-new-file
+    paths:
+      - packages/desktop/src/host/remoteWorkspacePreparation.ts
+      - packages/ui/src/lib/remoteConnectionPresentationErrors.ts
+    reason: Official-3.16.3 remote error-taxonomy reconstruction touched these upstream-late files (R10, ADR-035); contents stay upstream-shaped.
   # fork multi-account port (C-1 promotion, ADR-032): the promoted exp series
   # ships two fork-new files (registry store + switcher hook). Fork discipline
   # keeps real logic in fork-new files; their host directories are

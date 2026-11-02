@@ -987,6 +987,13 @@ U38 skip; build-time-config 7; CLI node:test 18+13), architecture check 0.
 Manual desktop smoke of the resume family remains outstanding (pre-existing
 debt). Push waits for the user's go (fork-no-upstream-push).
 
+**Gate note.** `architecture:check --changed` flags changed files first
+committed after the snapshot cutoff even when upstream itself added them
+(the gate evaluates changed files only). R10's two upstream-late files
+(`remoteWorkspacePreparation.ts`, `remoteConnectionPresentationErrors.ts`)
+got per-file exceptions (`recon-3163-remote-cluster-upstream-files`) per the
+U76 discipline — upstream code, not fork adoption.
+
 **Not contributed upstream.** Fork-internal process.
 
 ## ADR-032: hydra 3.16.x port + C-1 promotion  {2026-10-23}
