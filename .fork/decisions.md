@@ -1174,7 +1174,9 @@ official-3.16.3 behavior there, while the fork series itself ports to a fresh
 AppImages per release
 (`https://cdn-zcode.z.ai/zcode/electron/releases/<ver>/linux-x64/ZCode-<ver>-linux-x64.AppImage`).
 Both 3.16.2 and 3.16.3 were downloaded, AppImage-extracted and asar-extracted
-to `/var/tmp/zcode-3163-recon/{asar-3162,asar-3163,out...}`. Because the two
+under `/var/tmp/zcode-3163-recon/` (the extracted trees were cleaned after the
+run; the two AppImages are kept there for probe reproduction — re-extract with
+`--appimage-extract`, then `asar extract resources/app.asar`). Because the two
 bundles bracket the release, a distinctive-string probe (i18n keys, log
 messages, unique identifiers) decides per change whether it shipped in 3.16.3
 (present in 3163, absent in 3162), is 3.17.x-only (absent from both), or is
