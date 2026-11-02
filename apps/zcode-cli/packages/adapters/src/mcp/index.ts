@@ -2309,6 +2309,9 @@ function mcpRequestMeta(request: McpCallToolRequest): Record<string, unknown> {
     ...(request.trace?.spanId ? { span_id: request.trace.spanId } : {}),
     ...(request.trace?.parentSpanId ? { parent_span_id: request.trace.parentSpanId } : {}),
     ...(request.trace?.sessionId ? { session_id: request.trace.sessionId } : {}),
+    // subagent / 工作流子代理的调用带上派生它的顶层 session，工作区共享的 server 据此
+    // 让子代理与父 session 共用状态（文档插件查看面板 spec §8.2）。
+    ...(request.trace?.rootSessionId ? { root_session_id: request.trace.rootSessionId } : {}),
     ...(request.trace?.turnId ? { turn_id: request.trace.turnId } : {}),
     ...(request.runtimeScope ? { runtime_scope: request.runtimeScope } : {}),
     ...(request.workspacePath ? { workspace_path: request.workspacePath } : {}),

@@ -829,6 +829,7 @@ function createSubagentLifecycle(
   });
   const childTraceContext = createChildTraceContext(runTraceContext, {
     sessionId: childSessionId,
+    rootSessionId: runTraceContext.rootSessionId ?? request.sessionId,
     turnId: request.turnId,
     attributes: {
       agentId,
@@ -879,6 +880,7 @@ function createSubagentLifecycleFromTask(
   });
   const childTraceContext = createChildTraceContext(runTraceContext, {
     sessionId: childSessionId,
+    rootSessionId: runTraceContext.rootSessionId ?? request.sessionId,
     turnId: request.turnId,
     attributes: {
       agentId,
