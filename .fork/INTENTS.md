@@ -6,8 +6,10 @@ carry an `Intent` column referencing the IDs below. Intentions survive version
 bumps; patches are per-version expressions that can be adapted, rewritten, or
 retired.
 
-**Status lines updated at the 3.16.2 port (ADR-031, 2026-10-23)** — first
-vendor sync run under this charter.
+**Status lines updated at the 3.17.1 port (ADR-036, 2026-11-02).** The 3.17.1
+vendor retired the App business UT suites; fork behavioral tests are re-homed
+into the engineering manifest (U87). 3.16.3 was reconstructed separately on
+`patch/3.16.3` (ADR-035).
 
 ## What ZCodeR is
 
@@ -178,8 +180,9 @@ store so the class is moot. Provenance: sysadmin
 `incidents/2026-10-25-emudhra-ca-compromise.md`; the Electron leg of the
 same event is ADR-033.
 - Expressed by: U86
-- Status: applied to the 3.16.1/3.16.2 patch+hydra lines 2026-10-26 (mise
-  24.14.0 was checker-host confirmed vulnerable; 24.22.1 verified in-gates).
+- Status: re-checked at the 3.17.1 port (ADR-036) — upstream still pins
+  24.14.0 everywhere; U86 re-applied to patch/3.17.1 unchanged. (3.16.x lines
+  have carried 24.22.1 since 2026-10-26.)
 
 ## Candidates (not yet intentions — decide)
 - C-2 Web/mobile parity for Auto-Resume — blocked on upstream automation RPC
