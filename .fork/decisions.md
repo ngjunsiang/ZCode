@@ -1154,3 +1154,91 @@ line's content; the separate dev line is retired.
 - Numbering continues globally: next free **U87 / N26 / ADR-035**. Future dev
   happens directly on `patch/<release>` (short-lived feature branches off it,
   as the exp branches were); there is no standing dev line.
+## ADR-035: patch/3.16.3 — reconstructing the never-open-sourced 3.16.3 from the v3.17.1 tree + official bundles {2026-11-02}
+
+**Context.** Official 3.16.3 (website-latest since 2026-10-23) was never
+published as source: the repo history jumps 3.16.2 (`3c5b2276`) → 3.17.1
+(`a60ba6a7`, one vendor-squash commit, 5,231 files). The release run therefore
+seeds `patch/3.16.3` off `patch/3.16.2` (`3908cf15`) and re-expresses
+official-3.16.3 behavior there, while the fork series itself ports to a fresh
+`patch/3.17.1` off the tag.
+
+**Evidence base (new for this run).** The official CDN hosts versioned
+AppImages per release
+(`https://cdn-zcode.z.ai/zcode/electron/releases/<ver>/linux-x64/ZCode-<ver>-linux-x64.AppImage`).
+Both 3.16.2 and 3.16.3 were downloaded, AppImage-extracted and asar-extracted
+to `/var/tmp/zcode-3163-recon/{asar-3162,asar-3163,out...}`. Because the two
+bundles bracket the release, a distinctive-string probe (i18n keys, log
+messages, unique identifiers) decides per change whether it shipped in 3.16.3
+(present in 3163, absent in 3162), is 3.17.x-only (absent from both), or is
+unprobeable. The v3.17.1 source tree is the implementation reference; official
+release notes (zcode.z.ai/en/changelog) are the item list. Reverse probes
+(present only in 3162) are decisive evidence for removals.
+
+**Method.** For each changelog item: locate the implementing diff in
+`git diff 3c5b2276..a60ba6a7 -- <paths>`; probe it against the bundles; port
+only probe/ticket-confirmed hunks; exclude everything else. Mixed files were
+copied from v3.17.1 and hand-stripped of 3.17.x-only parts; clean files were
+applied as whole diffs. Locale keys were added to the fork-touched locale
+files by hand. Rationale comments are upstream's own (Chinese), preserved
+verbatim.
+
+**Scope verdicts (all probe-backed unless noted).**
+
+Landed as R1–R11 (see PATCHES.md): copy device MID; copy OAuth login link;
+version 3.16.3; terminal last-tab close; no unread on interrupted turns; blank
+DeferredToolCall card guard (only the one hunk); model test on remote-only
+workspaces; file tree left of preview; hoverable update-notes tooltip; the
+remote error-taxonomy + workspace-read-deadline cluster (incl. 2FA/
+platform-unsupported codes, first-provisioning join barrier, bind fallback
+after Host deadline, undecryptable-credential tolerance, connect-flight settle
+fix ZCT-2112827425880723456 per hotfix ticket); plugin-cache EXDEV reseed +
+installed-first launcher sort.
+
+Excluded as 3.17.x-only (probes absent from BOTH bundles unless noted):
+`source-server-{downgrade-unconfirmed,stop-failed,control-unresponsive}` codes
++ their presentation/UI; SSH keepalive-vs-handshake error split
+(`established` option, "SSH 连接无响应"); `resolveRemoteExitCode` exit-code
+normalization (unattributed, no 3.16.3 evidence); failed-reconnect
+`lastConnectionErrorCode` persistence; provider-provisioning lane/status/retry
+(`retryProviderProvisioning` absent from the 3.16.3 desktop bundle); mobile
+push pipeline; the multi-session config-write corruption work
+(`updateJsonObjectFile`/`"Failed to read config file"` absent from the 3.16.3
+bundles — the tasksStorageWorker.js binary delta is chunk-hash noise only);
+plugin marketplace update-all.
+
+Identified and mapped but NOT reconstructed this run (deferred; each has a
+full research note in this ADR's working notes): (a) IME input-lag +
+draft-survival composer overhaul — `LexicalChatInput.tsx`,
+`ConversationComposer.tsx`, `composer/useDraftConfigControl.ts` + SessionPane
+wiring; probes decisive (`onUserInputPresenceChange`, `pendingComposition`,
+`composerDraftScopeToken`, `stageComposerContent`,
+`captureComposerSubmissionDraftTransaction` all 3163-only), but the v3.17.1
+copies carry heavy 3.17.x churn (TTFT telemetry, workspaceMcpAdmission,
+SessionLifecycleSnapshot, hook-pending banners) and need a 3-file surgical
+merge into fork-touched SessionPane; (b) per-session document state + plugin
+isolation + subagent root_session_id (official plugin 0.2.1/0.2.2 unit) —
+office-runtime + tracer/runner/mcp chain; `runner.ts` (+296) and friends are
+entangled with 3.17 subagent work, and the 0.2.1 definitions explicitly
+require session-aware servers, making partial ports unsafe; (c) plugin
+background-retention cap (shared contract + main registry + renderer registry;
+self-contained but unscheduled); (d) marketplace back-navigation/scope-menu
+rework (entangled with 3.17 update-all); (e) mobile-terminal owner/allowlist
+cluster + identity-registration cache (host-side, medium, probe-confirmed
+3.16.3); (f) server-CLI remote-startup fixes (contracts/lock/supervisor/cli,
+documentary-only attribution via docs/issues tickets).
+
+**Conventions.** New manifest vocabulary: R-series rows with status
+`reconstructed` (landed-by-re-derivation; Intent column n/a — these rows carry
+vendor parity, not charter intentions). Reconstruction ≠ upstream pull: no
+vendor snapshot lands on this branch, so the README upstream-pull checklist
+does not apply; the sync log still records the run.
+
+**Verification.** Root + CLI typecheck green; lint 0 errors; affected suites
+run per repo contract — results recorded in the sync log row for 2026-11-02.
+Behavior probes: every R row cites its bundle evidence. The deferred items are
+the known gap vs official 3.16.3; they are candidates for a follow-up
+reconstruction pass or for readers to get natively by moving to
+`patch/3.17.1`.
+
+**Not contributed upstream.** Fork-internal process.

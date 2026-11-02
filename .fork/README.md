@@ -101,8 +101,9 @@ executed on 3.15.1 — carry the debt forward.
 
 | branch | role (user-set 2026-10-15) | state |
 | --- | --- | --- |
-| `main` | pure upstream mirror | `3c5b2276` = vendor 3.16.2 |
-| `patch/3.16.2` | **stable working line + daily-driver source** | full series incl. I-11 via the ADR-034 consolidation; U1–U86/N1–N25 |
+| `main` | pure upstream mirror | `a60ba6a7` = vendor 3.17.1 (ff'd 2026-11-02) |
+| `patch/3.16.3` | **3.16.x continuation — reconstructed 3.16.3 (ADR-035)** | full series (via 3.16.2) + R1–R11; composer/office-runtime units deferred, see ADR-035 |
+| `patch/3.16.2` | rollback line until a newer line verifies + installs | full series incl. I-11 via the ADR-034 consolidation; U1–U86/N1–N25 |
 | `patch/3.16.1` | checkpoint | full fork series (ADR-034 consolidation merge `cc0e9613`; was pristine vendor + node pin) |
 | `patch/3.15.1` | frozen stable (rollback) | full series incl. the 3.15.1-form multi-account expression (ADR-034 merge `13a396aa`); origin reconcile done |
 | `patch/3.14.3` | frozen (rollback) | U1–U53-era series, retired expressions kept as-is |
