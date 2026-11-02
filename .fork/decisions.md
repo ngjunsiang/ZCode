@@ -1154,3 +1154,54 @@ line's content; the separate dev line is retired.
 - Numbering continues globally: next free **U87 / N26 / ADR-035**. Future dev
   happens directly on `patch/<release>` (short-lived feature branches off it,
   as the exp branches were); there is no standing dev line.
+## ADR-036: 3.17.1 port — series replay onto patch/3.17.1; business-UT retirement handled by engineering-manifest re-homing {2026-11-02}
+
+**Context.** Upstream jumped 3.16.2 (`3c5b2276`) → 3.17.1 (`a60ba6a7`) in one
+vendor-squash (5,231 files). 3.16.3 was never open-sourced (handled separately
+on `patch/3.16.3` per ADR-035). 3.17.1's structural changes: App business UTs
+retired (packages/ui/test 1146→115; the vitest gate becomes the explicit
+`scripts/engineering-test-files.json` engineering manifest +
+`test:engineering:affected`), pnpm-workspace migration, `.oxlintrc.json`,
+protocol-v4 churn (TTFT/telemetry), cross-device config data-sync.
+
+**Decision.**
+1. `patch/3.17.1` seeded fresh off the tag; the full consolidated series
+   (`3908cf15` = patch/3.16.2 tip) replayed commit-by-commit (45 picks landed,
+   5 skipped empty, 7 conflict resolutions).
+2. **Retired test homes:** upstream deleted the suites U34/U35/U36/U38/U53/
+   U84/U85 pinned assertions into, and the oauthService/sidebar-tooltip test
+   additions of U79/exp-03. Per I-8/I-9 these rows are `retired @3.17.1 (test
+   home deleted upstream)` — the fork behavior they pinned lives in fork-new
+   files and their behavioral coverage moved to the re-homed fork-new tests.
+   U81's predicate matrix was re-homed as a fork-new file.
+3. **U87 (new row):** all fork-new vitest tests registered in
+   `scripts/engineering-test-files.json` (11 entries). The manifest is a
+   vendor file; the edit is registered and gated like any U-row (I-8).
+4. **I-12 re-check:** upstream 3.17.1 pins node 24.14.0 on every surveyed
+   surface (mise.toml, .node-version, .nvmrc, CLI engines) — still below the
+   24.22.1 first-fixed threshold → U86 re-applied unchanged; the
+   `third-party/inventory.json` hash for `apps/zcode-cli/package.json` was
+   recomputed post-U86 (sha256 over the current file).
+5. **Conflict re-derives (all intent-first):** `turn.ts` — upstream's
+   `appendInterruptMarker` import coexists with the fork sanitizer import;
+   `SessionPane.tsx` — upstream renamed `resolveMcpUnavailableNotice` to
+   `resolveMcpUnavailableNoticeInPartition` (stale fork-side imports of the
+   old name dropped); `architecture-policy.yaml` — the fork exceptions block
+   appended after upstream's grown exception tail (U76 note updated to 3.17.x);
+   `oauthCredentialRepo.ts` — 3.17.1 changed the import block shape the
+   exp registry adaptation re-derives against; `.fork/` doc conflicts resolved
+   to the incoming (later) fork states.
+6. **Skipped as empty/obsolete:** fmt commits `27159601`/`18cfdcf5`
+   (replaced by a scoped oxfmt pass over the 104 fork-touched files — the
+   vendor tag itself is NOT fmt-clean globally: a full `pnpm fmt` would touch
+   1,746 files and must not ride a fork commit), and the duplicate U86 pair
+   `55bdedc6`/`88619eb6` (ADR-034 merge artifacts).
+
+**Outcome.** 45 series commits + 1 re-derive commit (U15 version, U87
+manifest registration, scoped fmt) + this meta commit. Gates: root + CLI
+typecheck, lint, engineering vitest (incl. the 11 re-homed fork suites), CLI
+node:test via tsx, architecture:check, db:schema:check — results recorded in
+the sync log row for 2026-11-02. Manual desktop smoke of the resume family
+remains outstanding (pre-existing debt, carried).
+
+**Not contributed upstream.** Fork-internal process.
