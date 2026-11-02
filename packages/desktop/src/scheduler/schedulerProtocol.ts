@@ -9,7 +9,8 @@ export type SchedulerToMainMessage =
       type: "cron-dispatch-request";
       automationId: string;
       runId: string;
-      prompt: string;
+      // fork U19/U18：resumeTurn 分支省略 prompt（可选与 wire schema 对齐；host 读取侧 `?? ""`）。
+      prompt?: string;
       // fork Auto-Resume：resumeTurn 动作时 host 不投递 prompt，改派 v4 resumeTurn 命令。
       action?: "prompt" | "resumeTurn";
       targetTaskId?: string;
