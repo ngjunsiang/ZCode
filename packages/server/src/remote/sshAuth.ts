@@ -52,10 +52,18 @@ export function buildSSHConnectConfig(input: SSHConnectConfigInput): ConnectConf
   };
 }
 
-export function createKeyboardInteractiveResponder(password?: string) {
+// 服务器明确要求动态口令或第二因子时的提示文字。提示轮数和个数不能作为证据：
+// 错误密码后在同一轮里重复问 Password、其他模块再问一次密码，都只是还在要密码。
+const ADDITIONAL_VERIFICATION_PROMPT_PATTERN =
+  /verification code|one[- ]?time|\bOTP\b|pass ?code|(?:second|two|2nd)[- ]?factor|\b(?:2FA|MFA)\b|authenticator|动态口令|动态密码/iu;
+
+export function createKeyboardInteractiveResponder(
+  password?: string,
+  onAdditionalVerificationPrompt?: () => void,
+) {
   return (
-    _name: string,
-    _instructions: string,
+    name: string,
+    instructions: string,
     _lang: string,
     prompts: Array<{ prompt: string; echo: boolean }>,
     finish: (responses: string[]) => void,
@@ -65,17 +73,46 @@ export function createKeyboardInteractiveResponder(password?: string) {
       return;
     }
 
+    // Bug 原因：2FA 主机会在密码之后再要动态口令。这里只回答同一个密码，认证失败后只能提示
+    // “检查密码”，用户无法知道是不支持二次验证。旧逻辑把“多于一个提示或一轮”当作证据，
+    // 重复问 Password 的主机输错密码也被判成二次验证，UI 失去补密码入口；计数还挂在 backend
+    // 生命周期上，自动恢复重连时第一轮提示就被误判。现在只认提示文字，responder 不再保存状态。
+    // 仍按原样回答，避免改变“多次询问同一密码”主机的成功路径。
+    if (
+      [name, instructions, ...prompts.map(({ prompt }) => prompt)].some((text) =>
+        ADDITIONAL_VERIFICATION_PROMPT_PATTERN.test(text),
+      )
+    ) {
+      onAdditionalVerificationPrompt?.();
+    }
     finish(prompts.map(() => password));
   };
 }
 
-export function normalizeSSHConnectError(error: unknown): Error {
+export interface NormalizeSSHConnectErrorOptions {
+  /** 本次连接尝试中，keyboard-interactive 提示是否明确要求动态口令等额外验证。 */
+  additionalVerificationPrompted?: boolean;
+}
+
+export function normalizeSSHConnectError(
+  error: unknown,
+  options: NormalizeSSHConnectErrorOptions = {},
+): Error {
   if (
     typeof error === "object" &&
     error !== null &&
     "level" in error &&
     (error as { level?: string }).level === "client-authentication"
   ) {
+    if (options.additionalVerificationPrompted) {
+      return Object.assign(
+        new Error(
+          "SSH 认证失败：服务器在密码之后还要求额外验证（例如动态口令），当前不支持，请改用私钥或 SSH agent 登录",
+          { cause: error },
+        ),
+        { code: "remote-authentication-unsupported" satisfies PublicZCodeErrorCode },
+      );
+    }
     return authenticationError("SSH 认证失败：请检查用户名、密码或私钥配置", error);
   }
 

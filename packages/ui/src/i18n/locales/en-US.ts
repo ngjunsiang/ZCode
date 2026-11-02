@@ -212,6 +212,7 @@ const enUS: Record<string, string> = {
   "remote.action.retry": "Retry",
   "remote.action.none": "",
   "remote.error.authentication": "SSH authentication failed",
+  "remote.error.authenticationUnsupported": "Server requires additional verification",
   "remote.error.details": "Details",
   "remote.error.hostUnreachable.reason":
     "Check the device address and port, and make sure it is running and reachable.",
@@ -236,6 +237,10 @@ const enUS: Record<string, string> = {
     "Enter the password or key passphrase for this connection.",
   "remote.error.authentication.reason":
     "Check your SSH username, password or private key and retry.",
+  "remote.error.authenticationUnsupported.reason":
+    "After the password, this server asks for more verification (for example a one-time code). Only password, private key, and SSH agent sign-in are supported. Use a private key instead.",
+  "remote.error.platformUnsupported.reason":
+    "Remote connections support Linux and macOS devices on x64 or arm64. On Windows, connect through WSL, or use a Linux device.",
   "remote.error.unknown.reason": "Unable to connect. Retry or view details.",
   "remote.error.hostUnreachable.wsl": "Cannot access WSL distribution",
   "remote.error.hostUnreachable.wsl.reason":
@@ -286,6 +291,8 @@ const enUS: Record<string, string> = {
   "remote.error.bindSessionMissing.reason": "View details, follow the instructions, and retry.",
   "remote.error.workspaceDirectoryUnavailable.reason":
     "View details, follow the instructions, and retry.",
+  "remote.error.workspaceDirectoryUnresponsive.reason":
+    "If the remote device is a Mac, check the Mac for a folder access prompt. If the folder is on a network or external drive, make sure the drive is available. Then retry.",
   "remote.error.recoveryBudgetExhausted.reason":
     "View details, follow the instructions, and retry.",
   "remote.error.workspaceMigrationPlanDiverged.reason":
@@ -2279,6 +2286,8 @@ const enUS: Record<string, string> = {
     "The remote workspace session is no longer available. Reconnect and try again.",
   "remote.error.workspaceDirectoryUnavailable":
     "The remote project directory is missing, is not a folder, or cannot be accessed. Check the directory and permissions, then try again.",
+  "remote.error.workspaceDirectoryUnresponsive":
+    "The remote device did not respond for 30 seconds while reading the project folder",
   "remote.error.recoveryBudgetExhausted":
     "Automatic recovery stopped after {attempt}/{limit} attempts. Reconnect manually to try again.",
   "remote.error.workspaceMigrationPlanDiverged":
@@ -2295,6 +2304,7 @@ const enUS: Record<string, string> = {
   "remote.error.installFailed": "Remote installation failed",
   "remote.error.spaceInsufficient": "Not enough space on remote device",
   "remote.error.permissionDenied": "Remote write permission denied",
+  "remote.error.platformUnsupported": "This device's system is not supported",
   "remote.error.connectionCanceled": "Connection canceled",
   "remote.error.unknown": "Connection failed",
   "settings.source.recentLog": "View recent logs",
@@ -2432,6 +2442,8 @@ const enUS: Record<string, string> = {
   "remote.phase.identify": "Identify device",
   "remote.phase.deploy": "Install ZCode Server",
   "remote.phase.handshake": "Start and check compatibility",
+  "remote.phase.workspace": "Open project folder",
+  "remote.phaseSub.workspaceReading": "Reading {path}",
   "remote.progress.step": "Step {current}/{total}",
   "remote.progress.elapsedSeconds": "{seconds}s elapsed",
   "remote.progress.elapsedMinutesSeconds": "{minutes}m {seconds}s elapsed",

@@ -99,6 +99,10 @@ export class SSHBackend implements IRemoteBackend {
   private disposed = false;
   private hasEverConnected = false;
   private disconnectReported = false;
+  /** 本次连接尝试中 keyboard-interactive 提示明确要求动态口令；每次 connect 前清零，只用于认证失败的分类。 */
+  private additionalVerificationPrompted = false;
+  /** 在途连接尝试的失败出口；dispose 用它让等待中的 ensureConnected 立即结束。 */
+  private failPendingConnect: ((error: Error) => void) | undefined;
   private readonly disconnectEmitter = new Emitter<RemoteDisconnectEvent>();
   readonly onDidDisconnect = this.disconnectEmitter.event;
 
@@ -108,7 +112,9 @@ export class SSHBackend implements IRemoteBackend {
       // dispose 期间保留监听器只为吸收这类迟到事件，不能再向上层重复报告或触发未捕获异常。
       return;
     }
-    const normalizedError = normalizeSSHConnectError(error);
+    const normalizedError = normalizeSSHConnectError(error, {
+      additionalVerificationPrompted: this.additionalVerificationPrompted,
+    });
     // ready 之后如果底层连接抖动，ssh2 仍会发出 "error" 事件。
     // 若没有常驻监听，Node 会把它当成未捕获异常直接抛出，可能导致 host 进程崩溃。
     // 这里先记录错误详情再上报断连；上层收到断连后会退出 host，反过来会丢掉真实 error 文案。
@@ -158,9 +164,9 @@ export class SSHBackend implements IRemoteBackend {
         }
       ).on(
         "keyboard-interactive",
-        createKeyboardInteractiveResponder(options.password) as unknown as (
-          ...args: unknown[]
-        ) => void,
+        createKeyboardInteractiveResponder(options.password, () => {
+          this.additionalVerificationPrompted = true;
+        }) as unknown as (...args: unknown[]) => void,
       );
     }
   }
@@ -177,26 +183,39 @@ export class SSHBackend implements IRemoteBackend {
     this.assertNotDisposed();
     if (this.connected) return;
     return new Promise((resolve, reject) => {
-      const handleReady = () => {
+      const settle = () => {
+        this.client.off("ready", handleReady);
         this.client.off("error", handleConnectError);
-        if (this.disposed) {
-          // dispose 与 ssh2 ready 可能交错；迟到的 ready 若重新标记 connected，
-          // 后续 detect 会继续使用已取消连接的旧凭据。再次关闭 socket，并让原调用失败。
-          this.client.end();
-          reject(new Error("SSH backend 已释放，无法重新建立连接"));
-          return;
-        }
+        this.failPendingConnect = undefined;
+      };
+      const handleReady = () => {
+        settle();
         this.connected = true;
         this.hasEverConnected = true;
         this.disconnectReported = false;
         resolve();
       };
       const handleConnectError = (error: unknown) => {
-        this.client.off("ready", handleReady);
-        reject(normalizeSSHConnectError(error));
+        settle();
+        reject(
+          normalizeSSHConnectError(error, {
+            additionalVerificationPrompted: this.additionalVerificationPrompted,
+          }),
+        );
+      };
+      // Bug 原因：ssh2 收到服务端 banner 后，若认证完成前 dispose 调用 end() 关闭连接，ssh2 既不发
+      // ready 也不发 error，还会清掉 60 秒 readyTimeout。旧逻辑只等 ready/error，Promise 永不结束：
+      // 启动重连 10 秒超时释放 backend 后，设备一直停在“连接中”，之后的手动连接都 join 到这次
+      // 永不结束的尝试上（ZCT-2112827425880723456）。修复：dispose 通过这个出口让在途尝试立即失败，
+      // manager 随之写回 failed 并移除 flight。不改用 close 事件判定，是因为同一 ssh2 Client 重连时
+      // 旧连接的 close 可能晚到，无法与本次尝试区分。
+      this.failPendingConnect = (error) => {
+        settle();
+        reject(error);
       };
       this.client.once("ready", handleReady);
       this.client.once("error", handleConnectError);
+      this.additionalVerificationPrompted = false;
       this.client.connect(this.config);
     });
   }
@@ -614,6 +633,9 @@ export class SSHBackend implements IRemoteBackend {
       return;
     }
     this.disposed = true;
+    // 在途连接先失败并摘掉 ready 监听：迟到的 ready 不会再用已取消连接的旧凭据标记 connected，
+    // 也不必等 socket 关闭（TCP 未建立时可能要等系统连接超时）。
+    this.failPendingConnect?.(new Error("SSH backend 已释放，无法重新建立连接"));
     // 首次握手失败后，ssh2 可能在 socket end/close 之后继续发出 error。
     // dispose 后保留 onClientError 作为 no-op sink，不能按 end/close 事件时序提前移除，
     // 否则迟到事件会逃逸为 uncaughtException，让共享 Window Host 连带退出其它 workspace。

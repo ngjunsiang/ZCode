@@ -14,6 +14,7 @@ import {
   InternalChannels,
   PlatformChannels,
   REMOTE_BIND_CANCELED_ERROR_CODE,
+  REMOTE_WORKSPACE_PREPARATION_TIMEOUT_MS,
   resolveWorkspaceKey,
   scopedServicePortPayloadSchema,
   type BindRemoteWorkspaceSessionContextResult,
@@ -74,6 +75,8 @@ interface RemoteAttachmentRoute {
   // Main 只保留端口转发所需的 request/session 关联和脱敏 descriptor；连接/任务事实归 Host。
   descriptor: WindowHostRemoteWorkspaceDescriptor;
   rendererAttachmentId?: string;
+  /** 首个 desktop attachment（含首次 Provisioning）的唯一结果；首连阶段的 join 等待它。 */
+  initialAttachmentReady?: Promise<void>;
   pendingRendererAttachment?: {
     attachmentId: string;
     previousAttachmentId?: string;
@@ -222,7 +225,10 @@ export function createRemoteWorkspaceSessionManager(options: {
   const workspaceContextBindFlightsBySessionId = new Map<string, WorkspaceContextBindFlight>();
   const routesBySessionId = new Map<string, RemoteAttachmentRoute>();
   const listenedHosts = new WeakSet<ElectronUtilityProcess>();
-  const workspaceBindReadyTimeoutMs = options.workspaceBindReadyTimeoutMs ?? 30_000;
+  // Bug 原因（R8）：Host 打开项目目录有自己的 30 秒截止并报出具体原因；bind 兜底同为 30 秒时
+  // 总是 Main 先到，用户只看到“附着已取消”。兜底只处理 Host 完全不应答，必须晚于 Host 的截止时间。
+  const workspaceBindReadyTimeoutMs =
+    options.workspaceBindReadyTimeoutMs ?? REMOTE_WORKSPACE_PREPARATION_TIMEOUT_MS + 10_000;
   const pendingProviderProvisioningExecutions = new Map<
     string,
     PendingProviderProvisioningExecution
@@ -403,6 +409,12 @@ export function createRemoteWorkspaceSessionManager(options: {
     if (route.rendererAttachmentId) {
       return Promise.resolve();
     }
+    // Bug 原因：route 在首次 Provisioning 完成前就已登记，此时既没有 pending 也没有已就绪 attachment。
+    // Source 已在线时同窗口重复 connect 会被 Host join 到这个 session，旧逻辑在这里直接拒绝，
+    // 用户看到“尚无可用 renderer attachment”。首连阶段改为等待同一个首连结果，与发起者同成同败。
+    if (route.initialAttachmentReady) {
+      return route.initialAttachmentReady;
+    }
     return Promise.reject(
       new Error(
         `远程 workspace route 尚无可用 renderer attachment，sessionId=${route.descriptor.remoteSessionId}`,
@@ -533,13 +545,14 @@ export function createRemoteWorkspaceSessionManager(options: {
         // 手机 scope 没有 renderer ready；桌面采用时重新走唯一的连接提交点。
         existingRoute.connectFinalized = false;
         existingRoute.remoteUsageTelemetryEligible ||= pending.remoteUsageTelemetryEligible;
-        void (existingRoute.providerProvisioningReady ?? Promise.resolve())
-          .then(() => attachRendererPort(pending.win, existingRoute, "desktop-join"))
-          .then(
-            () => pending.resolve(descriptor.remoteSessionId),
-            (error: unknown) =>
-              pending.reject(error instanceof Error ? error : new Error(String(error))),
-          );
+        existingRoute.initialAttachmentReady = (
+          existingRoute.providerProvisioningReady ?? Promise.resolve()
+        ).then(() => attachRendererPort(pending.win, existingRoute, "desktop-join"));
+        void existingRoute.initialAttachmentReady.then(
+          () => pending.resolve(descriptor.remoteSessionId),
+          (error: unknown) =>
+            pending.reject(error instanceof Error ? error : new Error(String(error))),
+        );
         return;
       }
       // Bug 原因：显式 conversation bind 与 Source 自动恢复可能 join 到同一个 Host
@@ -578,8 +591,10 @@ export function createRemoteWorkspaceSessionManager(options: {
         executeProviderProvisioning(child, descriptor.remoteSessionId, environmentKey, trigger),
     );
     route.providerProvisioningDispose = registration.dispose;
-    void registration.initialSync
-      .then(() => attachRendererPort(pending.win, route, "connect"))
+    route.initialAttachmentReady = registration.initialSync.then(() =>
+      attachRendererPort(pending.win, route, "connect"),
+    );
+    void route.initialAttachmentReady
       .then(() => {
         emitConnectionLog(pending.win, {
           requestId,

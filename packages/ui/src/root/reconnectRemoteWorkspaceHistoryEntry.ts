@@ -8,7 +8,9 @@ import type {
   RemoteWorkspaceSessionEntry,
 } from "@zcode/shared";
 import {
+  isCredentialDecryptError,
   REMOTE_WORKSPACE_DIRECTORY_UNAVAILABLE_ERROR_CODE,
+  REMOTE_WORKSPACE_DIRECTORY_UNRESPONSIVE_ERROR_CODE,
   stripRemoteTargetSecrets,
 } from "@zcode/shared";
 import type { IServiceAccessor } from "@zcode/services";
@@ -99,6 +101,24 @@ export interface ReconnectRemoteWorkspaceOptions {
   onSshHostReady?: (credentials: SshReconnectCredentials) => void;
 }
 
+/**
+ * 读取 Profile secret；本机无法解密等同缺失，与 Host `SourceServerDirectory` 的规则一致。
+ * Bug 原因：~/.zcode 换机/换用户后，保存的密码解不开。Renderer 直接读取凭据，解密错误一路上抛，
+ * 点项目或设置页连接只显示通用的“连接失败”，到不了已有的补充凭据分支。其他读取错误照常上抛。
+ */
+async function loadUsableProfileCredential(
+  loadCredential: IServiceAccessor["credentialService"]["load"],
+  key: string,
+): Promise<string | null> {
+  try {
+    return await loadCredential(key);
+  } catch (error) {
+    if (!isCredentialDecryptError(error)) throw error;
+    logger.warn("[RemoteWorkspace] Profile 凭据在本机无法解密，按缺失处理");
+    return null;
+  }
+}
+
 export async function loadConnectionProfileCredentials(params: {
   profile: ConnectionProfile;
   loadCredential: IServiceAccessor["credentialService"]["load"];
@@ -110,10 +130,13 @@ export async function loadConnectionProfileCredentials(params: {
   }
   return {
     password: target.passwordCredentialKey
-      ? await params.loadCredential(target.passwordCredentialKey)
+      ? await loadUsableProfileCredential(params.loadCredential, target.passwordCredentialKey)
       : null,
     privateKeyPassphrase: target.privateKeyPassphraseCredentialKey
-      ? await params.loadCredential(target.privateKeyPassphraseCredentialKey)
+      ? await loadUsableProfileCredential(
+          params.loadCredential,
+          target.privateKeyPassphraseCredentialKey,
+        )
       : null,
   };
 }
@@ -199,11 +222,14 @@ export async function reconnectRemoteWorkspaceHistoryEntry({
     const sshCredentials = options?.sshCredentialsOverride ?? {
       password:
         targetSnapshot.kind === "ssh" && targetSnapshot.passwordCredentialKey
-          ? await loadCredential(targetSnapshot.passwordCredentialKey)
+          ? await loadUsableProfileCredential(loadCredential, targetSnapshot.passwordCredentialKey)
           : null,
       privateKeyPassphrase:
         targetSnapshot.kind === "ssh" && targetSnapshot.privateKeyPassphraseCredentialKey
-          ? await loadCredential(targetSnapshot.privateKeyPassphraseCredentialKey)
+          ? await loadUsableProfileCredential(
+              loadCredential,
+              targetSnapshot.privateKeyPassphraseCredentialKey,
+            )
           : null,
     };
     const token =
@@ -228,19 +254,22 @@ export async function reconnectRemoteWorkspaceHistoryEntry({
     let sessionId: string;
     try {
       sessionId = await connectRemoteWorkspaceTarget(reconnectTarget, options?.requestId, {
-      workspacePath: sessionEntry.workspacePath,
-      workspaceIdentity: fallbackWorkspaceIdentity,
-      connectTrigger: "reconnect",
-    });
+        workspacePath: sessionEntry.workspacePath,
+        workspaceIdentity: fallbackWorkspaceIdentity,
+        connectTrigger: "reconnect",
+      });
     } catch (error) {
-      // 该结构化错误只由 Host 在 Source 已上线后的目录 admission 发出。发起项目被删
+      // 这两个结构化错误只由 Host 在 Source 已上线后的目录 admission 发出。发起项目被删
       // 不代表 SSH 凭据失败；先放行复用同一凭据的 siblings，再按原路径记录该项目失败。
+      // Bug 原因：读目录 30 秒无响应（unresponsive）过去没有放行，SSH 组重连因此判定 Host
+      // 未就绪，同设备其他项目一个都不重连。
       if (
         reconnectTarget.kind === "ssh" &&
         error &&
         typeof error === "object" &&
         "code" in error &&
-        error.code === REMOTE_WORKSPACE_DIRECTORY_UNAVAILABLE_ERROR_CODE
+        (error.code === REMOTE_WORKSPACE_DIRECTORY_UNAVAILABLE_ERROR_CODE ||
+          error.code === REMOTE_WORKSPACE_DIRECTORY_UNRESPONSIVE_ERROR_CODE)
       ) {
         options?.onSshHostReady?.(sshCredentials);
       }

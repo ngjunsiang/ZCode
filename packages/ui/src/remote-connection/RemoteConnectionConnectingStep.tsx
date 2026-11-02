@@ -47,7 +47,16 @@ const REMOTE_CONNECTION_PHASES = [
   ["identify", "remote.phase.identify"],
   ["deploy", "remote.phase.deploy"],
   ["handshake", "remote.phase.handshake"],
+  // 修复原因（R8）：带项目目录的连接在握手后还要让远端读取并登记该目录。这一步过去被算进
+  // “启动并检查兼容性”，远端读目录卡住时用户看到的是兼容性检查一直转圈。设备级连接没有这一步。
+  ["workspace", "remote.phase.workspace"],
 ] as const;
+
+function remoteConnectionPhases(includeWorkspace: boolean) {
+  return includeWorkspace
+    ? REMOTE_CONNECTION_PHASES
+    : REMOTE_CONNECTION_PHASES.filter(([key]) => key !== "workspace");
+}
 
 export type RemoteConnectionPhaseStatus = "pending" | "active" | "complete" | "failed";
 
@@ -74,15 +83,20 @@ function normalizeRemoteConnectionPhase(rawPhase: string): string | null {
 
 export function resolveRemoteConnectionPhases(
   logs: ReadonlyArray<Pick<RemoteConnectionLogEntry, "message" | "level">>,
-  options: { connectionReady?: boolean } = {},
+  options: { connectionReady?: boolean; includeWorkspace?: boolean } = {},
 ) {
+  const includeWorkspace = options.includeWorkspace === true;
+  const phaseList = remoteConnectionPhases(includeWorkspace);
   let activeIndex = -1;
   let failedIndex = -1;
   for (const log of logs) {
     const match = /^\[source-server:([^\]]+)\]/u.exec(log.message);
     if (!match) continue;
-    const phaseIndex = REMOTE_CONNECTION_PHASES.findIndex(
-      ([key]) => key === normalizeRemoteConnectionPhase(match[1]!),
+    const normalized = normalizeRemoteConnectionPhase(match[1]!);
+    // 设备级连接（目录为 /）也会读取目录，但不显示“打开项目目录”；它的结果归到最后一步。
+    const phaseIndex = phaseList.findIndex(
+      ([key]) =>
+        key === (normalized === "workspace" && !includeWorkspace ? "handshake" : normalized),
     );
     if (phaseIndex < 0) continue;
     activeIndex = Math.max(activeIndex, phaseIndex);
@@ -91,11 +105,13 @@ export function resolveRemoteConnectionPhases(
   // 修复原因：成功连接后 publish-online 不是 Renderer 日志流的可靠终结事件，
   // 仅按日志推断会出现顶部已连接但阶段轨永久停在握手中的状态。连接 session ready
   // 是同一条连接流程的权威终态；没有错误阶段时用它完成最终阶段，不改变连接中的日志进度。
+  // 带项目目录时，Source 上线（publish-online）之后还有“打开项目目录”，只有窗口连接 ready 才算完成。
   const connectionReady =
     (options.connectionReady === true ||
-      logs.some((log) => log.message.startsWith("[source-server:publish-online]"))) &&
+      (!includeWorkspace &&
+        logs.some((log) => log.message.startsWith("[source-server:publish-online]")))) &&
     failedIndex < 0;
-  return REMOTE_CONNECTION_PHASES.map(([key, titleId], index) => ({
+  return phaseList.map(([key, titleId], index) => ({
     key,
     titleId,
     status: (failedIndex === index
@@ -131,10 +147,12 @@ export function resolveRemoteOperationProgress(
   // 说明该操作已结束，按尚无日志展示，等下一次尝试由 Host 替换日志。
   const tail = allLogs.at(-1);
   const logs = tail && (tail.phase === "ready" || tail.level === "error") ? [] : allLogs;
+  // Source 的操作日志在上线（ready）时结束，不含“打开项目目录”；设备进度固定为四步。
+  const phaseList = remoteConnectionPhases(false);
   let index = 0;
   for (const log of logs) {
     const key = normalizeRemoteConnectionPhase(log.phase);
-    const found = REMOTE_CONNECTION_PHASES.findIndex(([phase]) => phase === key);
+    const found = phaseList.findIndex(([phase]) => phase === key);
     if (found > index) index = found;
   }
   const latest = logs.at(-1);
@@ -142,8 +160,8 @@ export function resolveRemoteOperationProgress(
     latest?.progress !== undefined && (latest.phase === "upload" || latest.phase === "download");
   return {
     index,
-    total: REMOTE_CONNECTION_PHASES.length,
-    titleId: REMOTE_CONNECTION_PHASES[index]![1],
+    total: phaseList.length,
+    titleId: phaseList[index]![1],
     ...(transfer ? { percent: Math.floor(latest.progress! * 100) } : {}),
     ...(logs[0] ? { startedAt: logs[0].timestamp } : {}),
   };
@@ -161,6 +179,7 @@ export function resolveRemoteConnectionPhaseSub(
     installConfirmationPending?: boolean;
     deployErrorReason?: string;
     rawPhase?: string;
+    workspacePath?: string;
   },
 ): { id: string; values?: Record<string, string> } | null {
   switch (phase.key) {
@@ -209,6 +228,10 @@ export function resolveRemoteConnectionPhaseSub(
       return phase.status === "active" && context.rawPhase === "restart"
         ? { id: "remote.phaseSub.restarting" }
         : null;
+    case "workspace":
+      return phase.status === "active" && context.workspacePath
+        ? { id: "remote.phaseSub.workspaceReading", values: { path: context.workspacePath } }
+        : null;
     case "ready":
       return phase.status === "complete" || phase.status === "active"
         ? { id: "remote.phaseSub.readyOnline" }
@@ -245,7 +268,10 @@ export function RemoteConnectionConnectingStep({
   onClose,
   onBackToDevices,
   backToDevicesLabel,
+  workspacePath,
 }: {
+  /** 本次连接要打开的远端项目目录；有值时显示“打开项目目录”这一步。 */
+  workspacePath?: string;
   forceUpdate?: { tasks?: SourceServerRunningTask[]; onConfirm: () => void; onCancel: () => void };
   credentials?: {
     passphrase: boolean;
@@ -306,22 +332,23 @@ export function RemoteConnectionConnectingStep({
     : installConfirmation || forceUpdate
       ? "deploy"
       : undefined;
-  const phases = resolveRemoteConnectionPhases(logs, { connectionReady }).map(
-    (phase, index, all) => {
-      const waitingIndex = all.findIndex((item) => item.key === waitingPhase);
-      if (waitingIndex >= 0)
-        return {
-          ...phase,
-          status: (index < waitingIndex
-            ? "complete"
-            : index === waitingIndex
-              ? "active"
-              : "pending") as RemoteConnectionPhaseStatus,
-        };
-      if (loading && !logs.length && index === 0) return { ...phase, status: "active" as const };
-      return phase;
-    },
-  );
+  const phases = resolveRemoteConnectionPhases(logs, {
+    connectionReady,
+    includeWorkspace: Boolean(workspacePath),
+  }).map((phase, index, all) => {
+    const waitingIndex = all.findIndex((item) => item.key === waitingPhase);
+    if (waitingIndex >= 0)
+      return {
+        ...phase,
+        status: (index < waitingIndex
+          ? "complete"
+          : index === waitingIndex
+            ? "active"
+            : "pending") as RemoteConnectionPhaseStatus,
+      };
+    if (loading && !logs.length && index === 0) return { ...phase, status: "active" as const };
+    return phase;
+  });
   const logTime = (timestamp: string) => {
     const parts = String(timestamp).match(/(\d{1,2}):(\d{2}):(\d{2})/u);
     if (!parts) return mountedAt;
@@ -669,6 +696,7 @@ export function RemoteConnectionConnectingStep({
               rawPhase,
               recognizedDeviceName,
               installConfirmationPending: Boolean(installConfirmation),
+              workspacePath,
               deployErrorReason: deploymentFailedLog?.message.replace(
                 /^\[source-server:[^\]]+\]\s*/u,
                 "",

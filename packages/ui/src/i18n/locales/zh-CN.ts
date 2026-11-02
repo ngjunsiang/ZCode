@@ -207,6 +207,7 @@ const zhCN: Record<string, string> = {
   "remote.action.retry": "重试",
   "remote.action.none": "",
   "remote.error.authentication": "SSH 认证失败",
+  "remote.error.authenticationUnsupported": "服务器要求额外验证",
   "remote.error.details": "详细信息",
   "remote.error.hostUnreachable.reason": "检查设备地址和端口，确认设备已启动并可访问。",
   "remote.error.connectionTimeout.reason": "设备未及时响应，请检查网络后重试。",
@@ -222,6 +223,10 @@ const zhCN: Record<string, string> = {
   "remote.error.connectionCanceled.reason": "连接已取消，可以随时重新连接。",
   "remote.error.credentialsRequired.reason": "请补充连接所需的密码或私钥口令。",
   "remote.error.authentication.reason": "请检查 SSH 用户名、密码或私钥后重试。",
+  "remote.error.authenticationUnsupported.reason":
+    "该服务器在密码之后还要求额外验证（例如动态口令）。当前只支持密码、私钥和 SSH agent 登录，请改用私钥登录。",
+  "remote.error.platformUnsupported.reason":
+    "远程连接只支持 Linux 和 macOS 的 x64、arm64 设备。Windows 请在 WSL 中连接，或改用 Linux 设备。",
   "remote.error.unknown.reason": "暂时无法连接，请重试或查看详细信息。",
   "remote.error.hostUnreachable.wsl": "无法访问 WSL 发行版",
   "remote.error.hostUnreachable.wsl.reason": "请确认发行版已安装并可启动。",
@@ -260,6 +265,8 @@ const zhCN: Record<string, string> = {
   "remote.error.bindCanceled.reason": "请查看详细信息并按提示处理后重试。",
   "remote.error.bindSessionMissing.reason": "请查看详细信息并按提示处理后重试。",
   "remote.error.workspaceDirectoryUnavailable.reason": "请查看详细信息并按提示处理后重试。",
+  "remote.error.workspaceDirectoryUnresponsive.reason":
+    "如果远端是 Mac，请在 Mac 上查看是否有文件夹访问授权弹窗；如果目录在网络盘或外接盘上，请确认它可以访问。处理后重试。",
   "remote.error.recoveryBudgetExhausted.reason": "请查看详细信息并按提示处理后重试。",
   "remote.error.workspaceMigrationPlanDiverged.reason": "请查看详细信息并按提示处理后重试。",
   "remote.error.workspaceSessionGenerationChanged.reason": "请查看详细信息并按提示处理后重试。",
@@ -2109,6 +2116,7 @@ const zhCN: Record<string, string> = {
   "remote.error.bindSessionMissing": "远端工作区会话已失效，请重新连接后再试。",
   "remote.error.workspaceDirectoryUnavailable":
     "远程项目目录不存在、不是文件夹或无法访问。请检查目录和权限后重试。",
+  "remote.error.workspaceDirectoryUnresponsive": "远端读取项目目录 30 秒没有响应",
   "remote.error.recoveryBudgetExhausted":
     "自动恢复已在第 {attempt}/{limit} 次尝试后停止，请手动重连后再试。",
   "remote.error.workspaceMigrationPlanDiverged":
@@ -2125,6 +2133,7 @@ const zhCN: Record<string, string> = {
   "remote.error.installFailed": "远端安装失败",
   "remote.error.spaceInsufficient": "远端空间不足",
   "remote.error.permissionDenied": "没有远端写入权限",
+  "remote.error.platformUnsupported": "不支持该设备的系统",
   "remote.error.connectionCanceled": "已取消连接",
   "remote.error.unknown": "连接失败",
   "settings.source.recentLog": "查看最近日志",
@@ -2259,6 +2268,8 @@ const zhCN: Record<string, string> = {
   "remote.phase.identify": "识别设备",
   "remote.phase.deploy": "安装 ZCode Server",
   "remote.phase.handshake": "启动并检查兼容性",
+  "remote.phase.workspace": "打开项目目录",
+  "remote.phaseSub.workspaceReading": "正在读取 {path}",
   "remote.progress.step": "第 {current}/{total} 步",
   "remote.progress.elapsedSeconds": "已用 {seconds} 秒",
   "remote.progress.elapsedMinutesSeconds": "已用 {minutes} 分 {seconds} 秒",
