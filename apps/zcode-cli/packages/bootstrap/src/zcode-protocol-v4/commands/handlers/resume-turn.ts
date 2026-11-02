@@ -15,7 +15,6 @@ import type {
 import { traceContextToLogContext } from "@zcode/contracts";
 import { requireRecord } from "../record-access.js";
 import type { V4CommandCoreHost, V4SessionRecordView } from "../types.js";
-import { runWithSessionResidencyFinalization } from "../../../zcode-protocol/session-residency.js";
 
 const CONVERSATION_COMMAND_LOG_MODULE = "bootstrap.zcode_protocol_v4.commands";
 const RESUME_TURN_COMPLETED_EVENT = "conversation.command.resume_turn.completed";
@@ -169,7 +168,12 @@ async function resumeTurn(
       traceContext: record.traceContext,
     },
   );
-  void runWithSessionResidencyFinalization(record, async () => {
+  // 3.17.1 起 session-residency 反向依赖 server-operations → v4-bridge → executor →
+  // handlers/index，静态 import 会构成环（TDZ：index 展开 resumeTurnHandlers 时本模块
+  // 尚未求值完毕）。改为调用点动态加载，打破 fork 模块这一侧的环。
+  void import("../../../zcode-protocol/session-residency.js").then(
+    ({ runWithSessionResidencyFinalization }) =>
+      runWithSessionResidencyFinalization(record, async () => {
     let mutationReason = "quota_resume_completed";
     try {
       await completion;
@@ -180,10 +184,11 @@ async function resumeTurn(
         inputId: envelope.commandId,
         sessionId: record.app.sessionId,
       });
-    } finally {
-      await host.afterLegacyStateMutation?.(record, mutationReason);
-    }
-  });
+      } finally {
+        await host.afterLegacyStateMutation?.(record, mutationReason);
+      }
+    }),
+  );
 
   // ADR-008：续跑即用户要求工作继续，解除 error-paused 队列。续跑轮已派发，
   // ready hook 只会武装队列、不会抢跑队首。
