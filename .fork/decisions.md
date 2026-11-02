@@ -1197,11 +1197,25 @@ protocol-v4 churn (TTFT/telemetry), cross-device config data-sync.
    1,746 files and must not ride a fork commit), and the duplicate U86 pair
    `55bdedc6`/`88619eb6` (ADR-034 merge artifacts).
 
-**Outcome.** 45 series commits + 1 re-derive commit (U15 version, U87
-manifest registration, scoped fmt) + this meta commit. Gates: root + CLI
-typecheck, lint, engineering vitest (incl. the 11 re-homed fork suites), CLI
-node:test via tsx, architecture:check, db:schema:check — results recorded in
-the sync log row for 2026-11-02. Manual desktop smoke of the resume family
-remains outstanding (pre-existing debt, carried).
+**Outcome.** ~50 commits: 45 series picks + re-derives (U15, U87, scoped fmt)
++ this meta record. **Port findings fixed in-flight (each its own commit):**
+(a) exp-02 silently dropped out of the replay — re-applied against the
+re-derived store key helpers; (b) 3.17.1 closed an import cycle through
+session-residency → server-operations → v4-bridge → executor → handlers/index
+that TDZ'd the fork handler — residency helper now loaded dynamically at the
+call site (fork-new file only); (c) the scheduler `prompt` soundness issue
+(U19) re-surfaces at 3.17.1 exactly as at 3.16.2 — re-fixed; (d) the U15/U87
+edits were accidentally wiped by the fmt-revert and re-landed as a fix-forward
+with a corrective message; (e) N17's RTL dependency is gone upstream — suite
+rewritten on React 19's built-in act with a local harness, no dependency
+re-introduced.
+
+**Gates (real results, 2026-11-02):** root typecheck 0 errors; CLI turbo
+typecheck green; lint 0 errors / 85 warnings (3.17.1 vendor baseline, none
+fork-introduced); `test:engineering` full manifest — 166 files / 1072 tests
+passed, 8 skipped (includes all 11 re-homed fork suites); CLI node:test via
+tsx — bootstrap 18/18, core 13/13 (after the cycle fix); architecture:check
+--changed 0; db:schema:check compatible. Manual desktop smoke of the resume
+family remains outstanding (pre-existing debt, carried).
 
 **Not contributed upstream.** Fork-internal process.
