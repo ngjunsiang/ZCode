@@ -5,10 +5,7 @@
  * 协议层（zcodeAutomationCreateParamsSchema）已前置同样的 refine；这里是不绕 RPC 时
  * （scheduler/测试/内部调用）的最终边界。
  */
-import type {
-  ZCodeAutomationCreateParams,
-  ZCodeAutomationUpdateParams,
-} from "@zcode/shared";
+import type { ZCodeAutomationCreateParams, ZCodeAutomationUpdateParams } from "@zcode/shared";
 
 /** resumeTurn 动作（Auto-Resume）的创建/编辑不变量被破坏。 */
 export class InvalidAutomationActionError extends Error {

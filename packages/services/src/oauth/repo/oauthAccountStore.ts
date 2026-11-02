@@ -1,9 +1,5 @@
 /* eslint-disable max-lines -- 账号注册表集中维护 oauth:account:* 与 legacy oauth:* 镜像 key 的一致性，拆分会让镜像语义扩散到多个模块。 */
-import type {
-  OAuthProviderId,
-  OAuthTokenSet,
-  OAuthUserProfile,
-} from "@zcode/shared";
+import type { OAuthProviderId, OAuthTokenSet, OAuthUserProfile } from "@zcode/shared";
 import { BIGMODEL_PROVIDER_ID, ZAI_PROVIDER_ID } from "@zcode/shared";
 import type { ICredentialService } from "../../credential/credential.js";
 import { createServiceLogger } from "../../logger/serviceLogger.js";
@@ -403,7 +399,10 @@ export class OAuthAccountStore {
     }
     await this.credentialService.save(accountSlotKey(ref, "access_token"), tokenSet.accessToken);
     if (tokenSet.refreshToken) {
-      await this.credentialService.save(accountSlotKey(ref, "refresh_token"), tokenSet.refreshToken);
+      await this.credentialService.save(
+        accountSlotKey(ref, "refresh_token"),
+        tokenSet.refreshToken,
+      );
     } else {
       await this.credentialService.delete(accountSlotKey(ref, "refresh_token"));
     }
@@ -509,7 +508,9 @@ export class OAuthAccountStore {
       return;
     }
     // 兼容旧流程：条目尚未建立（异常时序）时至少保持 legacy 指针正确。
-    log.warn(undefined, "activateProvider: 注册表无该 provider 条目，仅写 legacy 指针", { provider });
+    log.warn(undefined, "activateProvider: 注册表无该 provider 条目，仅写 legacy 指针", {
+      provider,
+    });
     await this.credentialService.save(LEGACY_ACTIVE_PROVIDER_KEY, provider);
   }
 

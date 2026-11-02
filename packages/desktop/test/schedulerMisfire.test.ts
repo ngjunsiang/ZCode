@@ -36,9 +36,7 @@ describe("isMisfireClaim", () => {
   });
 
   it("退避重试（attempts>0）：即便原始窗口已远早于 now 也不是 misfire", () => {
-    expect(check({ dispatchAttempts: 2, nextRunAt: 1_000, now: 1_000 + GRACE_MS + 1 })).toBe(
-      false,
-    );
+    expect(check({ dispatchAttempts: 2, nextRunAt: 1_000, now: 1_000 + GRACE_MS + 1 })).toBe(false);
   });
 
   it("ADR-017 回归：重臂认领（attempts=0，retry_at 到期）不是 misfire", () => {
@@ -47,10 +45,20 @@ describe("isMisfireClaim", () => {
     const originalWindow = 1_000;
     const rearmAt = originalWindow + 15 * 60_000;
     expect(
-      check({ dispatchAttempts: 0, retryAt: rearmAt, nextRunAt: originalWindow, now: rearmAt - 200 }),
+      check({
+        dispatchAttempts: 0,
+        retryAt: rearmAt,
+        nextRunAt: originalWindow,
+        now: rearmAt - 200,
+      }),
     ).toBe(false);
     expect(
-      check({ dispatchAttempts: 0, retryAt: rearmAt, nextRunAt: originalWindow, now: rearmAt + 60_000 }),
+      check({
+        dispatchAttempts: 0,
+        retryAt: rearmAt,
+        nextRunAt: originalWindow,
+        now: rearmAt + 60_000,
+      }),
     ).toBe(false);
   });
 

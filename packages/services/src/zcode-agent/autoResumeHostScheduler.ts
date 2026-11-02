@@ -33,9 +33,7 @@ import {
   isQuotaClassifiedResumeError,
   nextEntitlementResetAt,
 } from "#src/session/automationResumePolicy.js";
-import {
-  resolveSessionPinnedQuotaResumeRequest,
-} from "#src/session/quotaResumeEntitlementRequest.js";
+import { resolveSessionPinnedQuotaResumeRequest } from "#src/session/quotaResumeEntitlementRequest.js";
 import type { IProviderSettingsService } from "#src/model-provider/providerFacadeServices.js";
 import type { ISettingService } from "#src/setting/setting.js";
 import type { IUsageStatsService } from "#src/usage-stats/usageStats.js";
