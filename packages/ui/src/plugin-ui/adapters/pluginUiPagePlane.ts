@@ -90,18 +90,20 @@ export function createPluginUiPagePlane(events: {
       stop();
     };
   };
+  const hasVisibleBounds = (node: HTMLElement) => {
+    const rect = node.getBoundingClientRect();
+    return (
+      node.isConnected &&
+      node.checkVisibility({ visibilityProperty: true }) &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  };
   const layout = () => {
     if (disposed) return;
     // forceMount 的隐藏 tab 仍连接 DOM，但尺寸为零；不能让它夺走后台初始化的承载表面。
     const candidates = [...anchors].filter(([, a]) => {
-      const node = a.placement.node;
-      const rect = node.getBoundingClientRect();
-      return (
-        node.isConnected &&
-        node.checkVisibility({ visibilityProperty: true }) &&
-        rect.width > 0 &&
-        rect.height > 0
-      );
+      return hasVisibleBounds(a.placement.node);
     });
     const chosen = candidates.find(([, a]) => a.placement.kind === "sidebar") ?? candidates.at(-1);
     visibility(Boolean(chosen && (chosen[1].visible || preview)));
@@ -184,6 +186,12 @@ export function createPluginUiPagePlane(events: {
       if (executionActive === active) return;
       executionActive = active;
       layout();
+    },
+    hasVisibleAnchor() {
+      // 回收或隐藏后，恢复意图仍以展示锚点为准，不能从旧 guest 的可见状态反推。
+      return [...anchors.values()].some(
+        ({ placement, visible }) => visible && hasVisibleBounds(placement.node),
+      );
     },
     bind(placement: SandboxPagePlacement) {
       const token = Symbol();

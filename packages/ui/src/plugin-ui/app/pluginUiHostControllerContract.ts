@@ -47,6 +47,8 @@ export interface PluginUiToolFeed {
 
 export interface PluginUiHostControllerDeps extends PluginUiInteractionCallbacks {
   onBusyChange?(): void;
+  /** 模型发起的页面工具和 sampling；不包括页面自主轮询。 */
+  onActivity?(): void;
   onInstanceClosed?(): void;
   createTransport(port: PluginSandboxTransportPort): Transport;
   bridge: Pick<
