@@ -24,6 +24,7 @@ import {
   type AgentStepRole,
   type PromptMessageSource,
   buildCompactionTelemetryExtraDetail,
+  consumeComposerInputTiming,
   discardPromptTelemetry,
   discardQueuedPromptTelemetry,
   finalizePromptTelemetry,
@@ -32,7 +33,9 @@ import {
   queuePromptTelemetry,
   recordAgentStepTelemetryEvent,
   recordComposerFocus,
+  recordComposerInputStart,
   recordComposerTextChange,
+  resetComposerInputStart,
   recordSubagentToolAttribution,
   recordPromptModelRequestStarted,
   recordPromptPermissionRequest,
@@ -79,6 +82,8 @@ export interface ConversationPromptTelemetrySeed {
   sendClickId?: string;
   /** 是否中途经过队列二次确认弹窗（该子集的 send_cost_ms 含用户停留时间）。 */
   queueConfirmed?: boolean;
+  /** 发送点击瞬间冻结的输入时序（input_start/first_char）；缺失时 accept 现场现取。 */
+  inputTiming?: { inputStartTime: number; inputFirstCharTime: number };
 }
 
 /** 发送落定的失败原因，取值口径见 docs/monitoring/composer-send-funnel-telemetry.md。 */
@@ -593,6 +598,18 @@ export class ConversationTelemetrySupervisor {
     recordComposerTextChange(this.workspaceScopeKey, nextText, this.now());
   }
 
+  // 3.16.3 IME 重构：编辑器只在真实用户输入的 update 拍上报；IME 候选态不发布正文，
+  // 所以首字符计时改由该显式事件驱动（onUserInputStart），清空由 onUserInputClear 归零。
+  recordComposerInputStart(): void {
+    if (this.disposed) return;
+    recordComposerInputStart(this.workspaceScopeKey, this.now());
+  }
+
+  resetComposerInputStart(): void {
+    if (this.disposed) return;
+    resetComposerInputStart(this.workspaceScopeKey);
+  }
+
   /**
    * 用户真实点击/聚焦输入框。程序性自动聚焦（新建任务、切会话、挂载回焦、上下文块移除后回焦）
    * 由 composer 侧拦截，不得进入本方法，否则「点击输入框」会被切会话动作污染。
@@ -616,6 +633,11 @@ export class ConversationTelemetrySupervisor {
     const seed: ConversationPromptTelemetrySeed = {
       ...input.seed,
       sendClickId: input.seed.sendClickId ?? createSendClickId(),
+      // 点击瞬间冻结输入时序（消费并归零），排队确认/等待投影不再改变本轮归属。
+      inputTiming: input.seed.inputTiming ?? consumeComposerInputTiming(
+        this.workspaceScopeKey,
+        input.seed.sendTime,
+      ),
     };
     if (this.disposed) return seed;
     reportSendFunnelSendClick({
@@ -741,6 +763,7 @@ export class ConversationTelemetrySupervisor {
       taskId: taskKey,
       messageId: seed.sourceCommandId,
       sendTime: seed.sendTime,
+      ...(seed.inputTiming ? { inputTiming: seed.inputTiming } : {}),
       extraDetail,
     });
     this.lifecyclesByCommandId.set(seed.sourceCommandId, {

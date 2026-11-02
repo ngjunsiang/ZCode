@@ -1759,6 +1759,7 @@ export function SessionPane({
   // Composer 保存下一次 Submission 的 renderer intent；prewarm session 仅承载草稿预热。
   const {
     composerDraft,
+    composerDraftScopeToken,
     modelSelectionRead,
     draftConfig,
     draftConfigRef,
@@ -1769,6 +1770,9 @@ export function SessionPane({
     promoteComposerDraft,
     captureAcceptedModelSelection,
     replaceComposerDraft,
+    stageComposerContent,
+    captureComposerContentLifecycleCommit,
+    captureComposerSubmissionDraftTransaction,
     updateComposerContent,
   } = useDraftConfigControl({
     workspacePath,
@@ -1953,12 +1957,13 @@ export function SessionPane({
     ) => {
       if (messageId) reportDraftCreated(createdSessionId, createSource ?? "session", messageId);
       const commit = () => {
+        // 旧首发接纳不能抢回已经切走的页面；导航与草稿交接共用 owner 的代际判断。
+        if (!promoteComposerDraft(createdSessionId)) return;
         // Bug 根因：Session 打开埋点只衡量已有 Session，但草稿首发过去会把新建/预热提升的
         // sessionId 直接交给同一 hook。预热 lease 还保留草稿期的 startedAt 与空 snapshot timing，
         // 因而把数小时闲置时间误记为 total/react。创建边界先标记本 pane 的首次绑定；离开后
         // 再次显式打开同一 Session 时标记会清除，恢复正常的已有 Session 打开测量。
         newlyCreatedSessionIdRef.current = createdSessionId;
-        promoteComposerDraft(createdSessionId);
         onSessionCreated?.(createdSessionId);
       };
       const organize =
@@ -5459,9 +5464,13 @@ export function SessionPane({
       draftMode={isDraft}
       draftConfig={draftConfig}
       composerDraft={composerDraft}
+      composerDraftScopeToken={composerDraftScopeToken}
       rootDraftScopeKey={composerScopeKey(newTaskComposerScope)}
       replaceComposerDraft={replaceComposerDraft}
       submissionReady={composerSubmissionReady && runtimeReady && !recoveringDraft}
+      stageComposerContent={stageComposerContent}
+      captureComposerContentLifecycleCommit={captureComposerContentLifecycleCommit}
+      captureComposerSubmissionDraftTransaction={captureComposerSubmissionDraftTransaction}
       updateComposerContent={updateComposerContent}
       createSubmissionFromComposer={createSubmissionFromComposer}
       telemetryDraftConfig={telemetryDraftConfig}

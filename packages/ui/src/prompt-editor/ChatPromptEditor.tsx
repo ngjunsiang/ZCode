@@ -18,6 +18,7 @@ import {
   LexicalChatInput,
   type ChatComposerPasteEvent,
   type LexicalChatInputHandle,
+  type UserInputPresence,
 } from "@/LexicalChatInput.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { AppSlashCommand } from "@/slashCommandHelpers.js";
@@ -79,6 +80,9 @@ export function ChatPromptEditor({
   compactPlaceholder = false,
   layout = "stacked",
   onChange,
+  onUserInputClear,
+  onUserInputPresenceChange,
+  onUserInputStart,
   onSubmit,
   onModifiedSubmit,
   onCancel,
@@ -145,6 +149,9 @@ export function ChatPromptEditor({
    */
   layout?: "stacked" | "inline";
   onChange?: (value: string) => void;
+  onUserInputClear?: () => void;
+  onUserInputPresenceChange?: (presence: UserInputPresence) => void;
+  onUserInputStart?: () => void;
   // 适配：返回 false 表示业务层拒绝/延迟本次提交，Lexical 不自行 reset（草稿保留）。
   onSubmit: (value: string) => boolean | void;
   onModifiedSubmit?: (value: string) => boolean | void;
@@ -356,6 +363,9 @@ export function ChatPromptEditor({
         onSubmit={handleEditorSubmit}
         onModifiedSubmit={onModifiedSubmit}
         onChange={handleTextChange}
+        onUserInputClear={onUserInputClear}
+        onUserInputPresenceChange={onUserInputPresenceChange}
+        onUserInputStart={onUserInputStart}
         onFocus={onFocus}
         triggerPanelContainer={resolvedTriggerPanelContainer}
         workspacePath={workspacePath}

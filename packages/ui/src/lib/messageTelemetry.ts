@@ -746,7 +746,7 @@ function ensureComposerInputTiming(workspacePath: string): ComposerInputTimingSt
   return created;
 }
 
-function consumeComposerInputTiming(workspacePath: string, sendTime: number) {
+export function consumeComposerInputTiming(workspacePath: string, sendTime: number) {
   const current = ensureComposerInputTiming(workspacePath);
   const inputStartTime = current.inputStartTime || current.inputFirstCharTime || sendTime;
   const inputFirstCharTime = current.inputFirstCharTime || inputStartTime || sendTime;
@@ -812,6 +812,12 @@ export function recordComposerTextChange(
     return;
   }
 
+  recordComposerInputStart(workspacePath, now);
+}
+
+// 3.16.3 IME 重构：composer 用显式的输入开始/清空事件替代逐字符 text-change 遥测。
+// 首字符时间戳只由真实输入路径写入；程序化回填正文（restore/claim）不会误触发。
+export function recordComposerInputStart(workspacePath: string, now = Date.now()): void {
   const inputTiming = ensureComposerInputTiming(workspacePath);
   if (inputTiming.inputFirstCharTime !== 0) {
     return;
@@ -821,6 +827,10 @@ export function recordComposerTextChange(
   if (inputTiming.inputStartTime === 0) {
     inputTiming.inputStartTime = now;
   }
+}
+
+export function resetComposerInputStart(workspacePath: string): void {
+  ensureComposerInputTiming(workspacePath).inputFirstCharTime = 0;
 }
 
 function createPromptTelemetryState(input: {
@@ -858,12 +868,12 @@ export function queuePromptTelemetry(input: {
   messageId: string;
   inputId?: InputId;
   sendTime: number;
+  /** 发送点击时冻结的输入时序；缺失时按旧口径在 accept 现场现取（会消费并归零）。 */
+  inputTiming?: { inputStartTime: number; inputFirstCharTime: number };
   extraDetail?: Record<string, string>;
 }) {
-  const { inputStartTime, inputFirstCharTime } = consumeComposerInputTiming(
-    input.workspacePath,
-    input.sendTime,
-  );
+  const { inputStartTime, inputFirstCharTime } =
+    input.inputTiming ?? consumeComposerInputTiming(input.workspacePath, input.sendTime);
   const promptTelemetry = createPromptTelemetryState({
     taskId: input.taskId,
     messageId: input.messageId,
