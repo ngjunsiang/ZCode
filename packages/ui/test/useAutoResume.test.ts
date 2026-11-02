@@ -1,6 +1,69 @@
 // @vitest-environment jsdom
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+// 3.17.1 退役了 App 业务单测连同 @testing-library/react；本文件用 React 19 自带 act
+// + 一个最小 renderHook/waitFor 替代，避免为 fork 测试重新引入已删除的依赖（U87 注）。
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mountedRoots: Array<() => void> = [];
+function cleanup(): void {
+  for (const unmount of mountedRoots.splice(0)) unmount();
+}
+
+function renderHook<P, T>(
+  callback: (props: P) => T,
+  opts?: { initialProps?: P },
+): {
+  result: { current: T | null };
+  rerender: (props: P) => void;
+  unmount: () => void;
+} {
+  const result: { current: T | null } = { current: null };
+  let props = (opts?.initialProps ?? ({} as P)) as P;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const App = (): null => {
+    result.current = callback(props);
+    return null;
+  };
+  act(() => {
+    root.render(createElement(App));
+  });
+  const unmount = (): void => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  };
+  mountedRoots.push(unmount);
+  return {
+    result,
+    rerender: (next: P) => {
+      props = next;
+      act(() => {
+        root.render(createElement(App));
+      });
+    },
+    unmount,
+  };
+}
+
+async function waitFor(assert: () => void, timeoutMs = 2_000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    try {
+      await act(async () => {
+        await Promise.resolve();
+      });
+      assert();
+      return;
+    } catch {
+      if (Date.now() - start > timeoutMs) throw new Error("waitFor: assertion not met in time");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+}
 import type { ZCodeAutomation } from "@zcode/shared";
 import type { IZCodeAgentService } from "@zcode/services";
 
