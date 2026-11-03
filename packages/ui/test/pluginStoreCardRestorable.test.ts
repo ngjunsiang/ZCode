@@ -328,13 +328,15 @@ describe("PluginStoreCard restorable built-ins", () => {
     expect(html).toContain("Install");
   });
 
-  it("keeps installed card and detail enablement inside the actions menu", async () => {
+  it("shows the persistent enable switch on the installed card and keeps actions in the menu (3.16.3 card redesign)", async () => {
     const item = installedItemWithRuntimeInfo();
     const cardHtml = await renderCard(item, makeActions());
     const detailHtml = await renderDetail(item, makeActions());
 
+    // 3.16.3 卡片重构：启用开关常驻卡片（悬停菜单只留卸载等次要动作）；
+    // 详情页的独立启停开关随 PluginStoreEnabledSwitch 移除，动作收敛到「…」菜单。
+    expect(cardHtml).toContain('data-testid="plugin-store-enabled-switch"');
     expect(cardHtml).toContain('data-testid="plugin-store-item-menu"');
-    expect(cardHtml).not.toContain('data-testid="plugin-store-enabled-switch"');
     expect(detailHtml).not.toContain('data-testid="plugin-store-enabled-switch"');
     expect(detailHtml).toContain('data-testid="plugin-store-item-menu"');
   });

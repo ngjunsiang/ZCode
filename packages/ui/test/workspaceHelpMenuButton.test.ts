@@ -262,6 +262,8 @@ describe("WorkspaceHelpMenuButton", () => {
         ...(desktop
           ? [
               "titleBar.menu.help.exportLogs",
+              // 3.16.3 feature 1：帮助菜单新增「复制设备 MID」，便于工单报修。
+              "workspaceHeader.help.copyDeviceMid",
               "titleBar.menu.help.resourceManager",
               "titleBar.menu.help.checkForUpdates",
               "titleBar.menu.help.about",

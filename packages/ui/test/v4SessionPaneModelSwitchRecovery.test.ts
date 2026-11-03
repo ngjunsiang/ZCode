@@ -350,7 +350,19 @@ vi.mock("@/v4/composer/useDraftConfigControl.js", async (importOriginal) => {
       handleDraftSelectModel: draftConfigMock.handleDraftSelectModel,
       handleDraftSelectThought: draftConfigMock.handleDraftSelectThought,
       handleDraftSwitchMode: draftConfigMock.handleDraftSwitchMode,
-      promoteComposerDraft: vi.fn(),
+      // 3.16.3 草稿事务 API：promote 返回是否仍属于当前 pane（提交门禁），
+      // capture/stage 由测试断言按需补充，这里给无副作用的默认实现。
+      composerDraftScopeToken: Symbol("test-draft-scope"),
+      stageComposerContent: vi.fn(),
+      captureComposerContentLifecycleCommit: vi.fn(() => vi.fn()),
+      captureComposerSubmissionDraftTransaction: vi.fn(() => ({
+        claim: () => true,
+        restore: () => ({ current: true, applied: false }),
+        finalize: () => ({ current: true, applied: true }),
+        release: () => {},
+        matchesTarget: () => true,
+      })),
+      promoteComposerDraft: vi.fn(() => true),
       replaceComposerDraft: vi.fn(),
       updateComposerContent: vi.fn(),
     }),

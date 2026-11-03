@@ -134,8 +134,10 @@ describe("component cache", () => {
     await expect(readFile(join(release, "runtime", "server-core.js"), "utf8")).resolves.toBe("new");
 
     await writeFile(join(release, "runtime", "server-core.js"), "tampered", "utf8");
-    await expect(cache.assemble(assembleOptions)).rejects.toThrow(/immutable release conflict/i);
-    await expect(readFile(join(release, "runtime", "server-core.js"), "utf8")).resolves.toBe("tampered");
+    // 同版本重装修复损坏副本（ticket 03）：损坏不再拒绝，promote 把校验过的 incoming
+    // rename 到位（损坏副本先移到同目录隐藏名再清理），目标恢复为完好内容。
+    await cache.assemble(assembleOptions);
+    await expect(readFile(join(release, "runtime", "server-core.js"), "utf8")).resolves.toBe("new");
   });
 
   it("ignores a cache entry whose archive bytes no longer match its marker", async () => {

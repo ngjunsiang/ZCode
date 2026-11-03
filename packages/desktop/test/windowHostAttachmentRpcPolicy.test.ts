@@ -13,7 +13,8 @@ describe("Window Host attachment RPC policy", () => {
 
     expect(policy?.allowedChannels.has(ServiceChannels.Setting)).toBe(true);
     expect(policy?.allowedChannels.has(ServiceChannels.ZCodeTask)).toBe(true);
-    expect(policy?.allowedChannels.has(ServiceChannels.Terminal)).toBe(false);
+    // 3.16.3 手机终端修复：已配对 attachment 复用原终端服务（此前被白名单挡下并超时）。
+    expect(policy?.allowedChannels.has(ServiceChannels.Terminal)).toBe(true);
     expect(policy?.allowedChannels.has(ServiceChannels.SourceServerManagement)).toBe(false);
     expect(policy?.allowedChannels.has(ServiceChannels.ProviderProvisioningTarget)).toBe(false);
     expect(policy?.allowedChannels.has(ServiceChannels.ProviderSettings)).toBe(true);
@@ -30,14 +31,14 @@ describe("Window Host attachment RPC policy", () => {
     expect([...policy!.allowedChannels].every((channel) => registeredChannels.has(channel))).toBe(
       true,
     );
-    expect(policy?.allowedChannels.size).toBe(46);
+    expect(policy?.allowedChannels.size).toBe(47);
   });
 
   it("keeps the complete service surface for desktop attachments", () => {
     expect(resolveWindowHostServiceExposurePolicy("desktop-continuous")).toBeUndefined();
   });
 
-  it("rejects Terminal RPC before the mobile call reaches the registered service", async () => {
+  it("admits Terminal RPC for mobile attachments now that the channel is reviewed", async () => {
     const terminalCreate = vi.fn(async () => ({ id: "terminal-1" }));
     const services = new ServiceCollection()
       .register(ISettingService, { get: async () => ({ locale: "zh-CN" }) } as never)
@@ -62,8 +63,8 @@ describe("Window Host attachment RPC policy", () => {
         client
           .getChannel(ITerminalService.channelName)
           .call("create", [{ cols: 80, rows: 24, cwd: "/repo" }]),
-      ).rejects.toThrow("Channel name 'terminal' timed out");
-      expect(terminalCreate).not.toHaveBeenCalled();
+      ).resolves.toEqual({ id: "terminal-1" });
+      expect(terminalCreate).toHaveBeenCalledTimes(1);
     } finally {
       client.dispose();
       server.dispose();

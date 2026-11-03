@@ -33,13 +33,52 @@ describe("DataRootLock", () => {
   });
 
   it("refuses to steal the lock from a live process", async () => {
+    // 身份判活之后，手写的 {pid} 锁不再代表活进程（进程可能已死、PID 被复用，或这份锁根本
+    // 不是该进程经 acquire 写下的——没有本进程持有的 ownerToken）。活进程必须真的持锁：
+    // 由子进程 acquire 并保持持有，主进程 acquire 必须被拒。
     const root = await mkdtemp(join(tmpdir(), "zcode-r2-lock-live-"));
     const lockFile = join(root, "run", "server.lock");
+    const readyFile = join(root, "ready");
     await mkdir(join(root, "run"), { recursive: true });
-    await writeFile(lockFile, `${JSON.stringify({ pid: process.pid, acquiredAt: Date.now() })}\n`, "utf8");
-
-    const lock = new DataRootLock(lockFile);
-    await expect(lock.acquire()).rejects.toThrow(/already running/);
+    const moduleUrl = new URL("../src/runtime/lock.ts", import.meta.url).href;
+    const childProgram = `
+      const { DataRootLock } = await import(process.env.ZCODE_TEST_LOCK_MODULE);
+      const { writeFile } = await import("node:fs/promises");
+      const lock = new DataRootLock(process.env.ZCODE_TEST_LOCK_FILE);
+      await lock.acquire();
+      await writeFile(process.env.ZCODE_TEST_LOCK_READY, "ready\\n");
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      await lock.release();
+    `;
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", childProgram], {
+      env: {
+        ...process.env,
+        ZCODE_TEST_LOCK_MODULE: moduleUrl,
+        ZCODE_TEST_LOCK_FILE: lockFile,
+        ZCODE_TEST_LOCK_READY: readyFile,
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let childError = "";
+    child.stderr.on("data", (chunk) => { childError += String(chunk); });
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    const readyDeadline = Date.now() + 20_000;
+    let ready = false;
+    while (Date.now() < readyDeadline) {
+      if (await readFile(readyFile, "utf8").then(() => true, () => false)) {
+        ready = true;
+        break;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    try {
+      expect(ready, `lock child never became ready: ${childError}`).toBe(true);
+      const lock = new DataRootLock(lockFile);
+      await expect(lock.acquire()).rejects.toThrow(/already running/);
+    } finally {
+      child.kill("SIGKILL");
+      await exited;
+    }
   });
 
   it("reports missing, stale, active and malformed lock owners without mutating the file", async () => {
@@ -51,12 +90,56 @@ describe("DataRootLock", () => {
     await mkdir(join(root, "run"), { recursive: true });
     await writeFile(lockFile, `${JSON.stringify({ pid: DEAD_PID })}\n`, "utf8");
     await expect(lock.inspect()).resolves.toMatchObject({ state: "stale", pid: DEAD_PID });
+    // 身份判活：手写的 {pid: process.pid} 没有本进程持有的 ownerToken，不再是 active。
     await writeFile(lockFile, `${JSON.stringify({ pid: process.pid })}\n`, "utf8");
-    await expect(lock.inspect()).resolves.toMatchObject({ state: "active", pid: process.pid });
+    await expect(lock.inspect()).resolves.toMatchObject({ state: "stale", pid: process.pid });
     await writeFile(lockFile, "not-json", "utf8");
     await expect(lock.inspect()).resolves.toMatchObject({ state: "invalid" });
     await expect(readFile(lockFile, "utf8")).resolves.toBe("not-json");
   });
+
+  it("reports a lock held through acquire by a live process as active", async () => {
+    const root = await mkdtemp(join(tmpdir(), "zcode-r2-lock-inspect-live-"));
+    const lockFile = join(root, "server.lock");
+    const readyFile = join(root, "ready");
+    const moduleUrl = new URL("../src/runtime/lock.ts", import.meta.url).href;
+    const childProgram = `
+      const { DataRootLock } = await import(process.env.ZCODE_TEST_LOCK_MODULE);
+      const { writeFile } = await import("node:fs/promises");
+      const lock = new DataRootLock(process.env.ZCODE_TEST_LOCK_FILE);
+      await lock.acquire();
+      await writeFile(process.env.ZCODE_TEST_LOCK_READY, "ready\\n");
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      await lock.release();
+    `;
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", childProgram], {
+      env: {
+        ...process.env,
+        ZCODE_TEST_LOCK_MODULE: moduleUrl,
+        ZCODE_TEST_LOCK_FILE: lockFile,
+        ZCODE_TEST_LOCK_READY: readyFile,
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    const readyDeadline = Date.now() + 20_000;
+    let ready = false;
+    while (Date.now() < readyDeadline) {
+      if (await readFile(readyFile, "utf8").then(() => true, () => false)) {
+        ready = true;
+        break;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+    try {
+      expect(ready).toBe(true);
+      const lock = new DataRootLock(lockFile);
+      await expect(lock.inspect()).resolves.toMatchObject({ state: "active", pid: child.pid });
+    } finally {
+      child.kill("SIGKILL");
+      await exited;
+    }
+  }, 30_000);
 
   it("keeps locks under different data roots isolated (R2-CLI-13)", async () => {
     const rootA = await mkdtemp(join(tmpdir(), "zcode-r2-lock-a-"));

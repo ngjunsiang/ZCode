@@ -68,11 +68,16 @@ describe("terminalPanelState", () => {
     expect(afterClosingFirst.sessions[second.id]?.index).toBe(2);
   });
 
-  it("requests closing the panel without deleting the only session", () => {
+  it("last-tab close deletes the only session so the PTY disposes, then the panel collapses (3.16.3 fix 3)", () => {
     const state = createState([createSession("terminal:1", 1)]);
 
     expect(getTerminalSessionCloseAction(state, "terminal:1")).toBe("close-panel");
-    expect(closeTerminalSession(state, "terminal:1")).toBe(state);
+    // 3.16.3 关闭语义：最后一个 tab 关闭即删除 session/workspace 描述符，
+    // TerminalSession 卸载并 dispose PTY，面板随后收起。
+    expect(closeTerminalSession(state, "terminal:1")).toEqual({
+      sessions: {},
+      workspaces: {},
+    });
   });
 
   it("removes a selected session and activates its previous neighbor", () => {

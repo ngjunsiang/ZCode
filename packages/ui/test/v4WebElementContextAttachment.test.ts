@@ -11,6 +11,7 @@ import {
   type CodeCommentPayload,
 } from "@/lib/codeCommentContext.js";
 import { ConversationComposer } from "@/v4/ConversationComposer.js";
+import { createTestComposerDraftOwner } from "./helpers/testComposerDraftOwner.js";
 import { ZCodeIntlProvider } from "@/i18n/IntlProvider.js";
 
 const { chatPromptEditorProps } = vi.hoisted(() => ({
@@ -278,6 +279,7 @@ function flushAsyncWork() {
 
 function renderComposer(onSendText: (text: string, options?: unknown) => Promise<void>) {
   const container = installMinimalDom();
+  const owner = createTestComposerDraftOwner();
   const root: Root = createRoot(container);
   act(() => {
     root.render(
@@ -285,8 +287,13 @@ function renderComposer(onSendText: (text: string, options?: unknown) => Promise
         ZCodeIntlProvider,
         { initialLocale: "en-US" },
         createElement(ConversationComposer, {
-          composerDraft: { text: "", updatedAt: 0 },
-          updateComposerContent: vi.fn(),
+          composerDraft: owner.draft,
+          composerDraftScopeToken: owner.composerDraftScopeToken,
+          stageComposerContent: owner.stageComposerContent,
+          captureComposerContentLifecycleCommit: owner.captureComposerContentLifecycleCommit,
+          captureComposerSubmissionDraftTransaction:
+            owner.captureComposerSubmissionDraftTransaction,
+          updateComposerContent: owner.updateComposerContent,
           replaceComposerDraft: vi.fn(),
           draftMode: true,
           onSelectModel: vi.fn(),

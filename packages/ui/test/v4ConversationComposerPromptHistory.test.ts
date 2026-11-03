@@ -11,6 +11,7 @@ import {
   ConversationComposer,
   type ConversationComposerSendResult,
 } from "@/v4/ConversationComposer.js";
+import { createTestComposerDraftOwner } from "./helpers/testComposerDraftOwner.js";
 import {
   persistV4ComposerDraft,
   readV4ComposerDraft,
@@ -309,17 +310,20 @@ function renderComposerElement(
   submissionReady = true,
 ) {
   const scopeId = sessionId ?? V4_DRAFT_SCOPE_ROOT;
-  let ownedDraft = composerDraft ??
+  const initialDraft = composerDraft ??
     readV4ComposerDraft("/workspace", undefined, scopeId) ?? {
       text: "",
       updatedAt: 0,
     };
-  const persistOwnedContent =
-    updateComposerContent ??
-    ((content: Pick<V4ComposerDraft, "text" | "editorStateJson" | "mention">) => {
-      ownedDraft = { ...ownedDraft, ...content };
-      persistV4ComposerDraft("/workspace", undefined, scopeId, ownedDraft);
-    });
+  // 3.16.3 草稿事务：挂载点改为注入完整 owner（staged content / incarnation / 事务），
+  // owner 的 persist 落到与旧 persistOwnedContent 相同的 localStorage 语义。
+  const owner = createTestComposerDraftOwner({
+    initialDraft,
+    persist: (draft) => persistV4ComposerDraft("/workspace", undefined, scopeId, draft),
+  });
+  if (updateComposerContent) {
+    owner.setSink(updateComposerContent);
+  }
   return createElement(
     ZCodeIntlProvider,
     { initialLocale: "zh-CN" },
@@ -330,8 +334,13 @@ function renderComposerElement(
       onSendText,
       createSubmissionFromComposer,
       submissionReady,
-      composerDraft: ownedDraft,
-      updateComposerContent: persistOwnedContent,
+      composerDraft: owner.draft,
+      composerDraftScopeToken: owner.composerDraftScopeToken,
+      stageComposerContent: owner.stageComposerContent,
+      captureComposerContentLifecycleCommit: owner.captureComposerContentLifecycleCommit,
+      captureComposerSubmissionDraftTransaction:
+        owner.captureComposerSubmissionDraftTransaction,
+      updateComposerContent: owner.updateComposerContent,
       replaceComposerDraft: (next) => {
         ownedDraft = { ...next, updatedAt: Date.now() };
         persistV4ComposerDraft("/workspace", undefined, scopeId, ownedDraft);
@@ -1022,7 +1031,10 @@ describe("ConversationComposer settles submissions across pane remount (R3A-B-07
 
     await applyAuthoritativeSnapshot();
     expect(inputClear).not.toHaveBeenCalled();
-    expect(owner.draft.text).toBe(`${REMOUNT_TEXT} 补充`);
+    // 3.16.3 staged-content：新正文先驻留内存 staged buffer（store 落盘推迟到结算/收口），
+    // 权威投影的清空在恢复点被「用户已继续编辑」守卫拦下——保证体现在编辑器正文与
+    // store 写入序列上：最后一次 store 写入仍是恢复的提交正文，没有追加清空。
+    expect(owner.writes.at(-1)).toBe(REMOUNT_TEXT);
     await act(async () => remounted.unmount());
   });
 

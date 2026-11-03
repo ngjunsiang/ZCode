@@ -190,6 +190,7 @@ describe("service manager adapters", () => {
       "systemctl",
       "systemctl",
       "systemctl",
+      "systemctl",
       "schtasks",
       "schtasks",
       "schtasks",

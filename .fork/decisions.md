@@ -1252,6 +1252,66 @@ reconstruction pass or for readers to get natively by moving to
 
 **Not contributed upstream.** Fork-internal process.
 
+## ADR-037: deferred 3.16.3 units reconstructed with the official-bundle-diff method (R12–R18) {2026-11-03}
+
+**Context.** ADR-035 reconstructed 11 of ~25 official-3.16.3 items and mapped
+the rest as deferred (a)–(f). This run completes the deferred units on
+`recon/3163-deferred-units` (off `patch/3.16.3` `eecaa6eb`), landing R12–R18
+(see PATCHES.md). User directive: complete the deferred units, then build the
+zcoder PKGBUILD from the result, install, and run a stability watch; the
+daily driver stays v3.16.2-fork.2 until the user agrees it is stable.
+
+**Method upgrade — official bundle diff as ground truth.** ADR-035 probed
+markers to decide IF something shipped; this run additionally diffs the
+official 3.16.2 vs 3.16.3 bundles per chunk (content-hashed names make
+renamed-file sets the exact change set): renderer assets (`out/renderer`,
+js-beautify both sides and diff windows around property-name/string anchors),
+process bundles (`out/main`, `out/host`, `out/preload`), and the CLI bundle
+(`resources/glm/zcode.cjs`). Minified bundles keep object-literal keys,
+property accesses, i18n/log strings, and esbuild keep-names annotations, so
+per-hunk presence/absence is decidable; official 3.16.3 code shape was read
+directly from beautified windows where the v3.17.1 reference disagreed. This
+caught several things the changelog sweep missed (R13 RPC cluster; the
+3.17-only hunks hiding inside each deferred unit's vendor diff:
+persistComposerContent, /reload recovery, TTFT submittedAt/uiMode, hook/mcp
+banners, placeholder inputPending, node-fallback, pool aborts, sub-frame
+policy, MCP-sync scoping, display-modes plane API, heartbeat watchdog, R2 §8.1
+stop/restart machinery, E44 clipboard — all excluded with probe evidence in
+the R-row notes) and two census gaps NOT ported (recorded here so they are not
+lost): "built-in component files rebuilt when missing" and "subdirectories
+lost after session restore" (changelog lines whose implementing diffs were not
+located within this run's time box; both are renderer/host behaviors, candidates
+for a future pass). The desktop "reinstall remote service" UI entry (ticket 03)
+is likewise documented-not-ported: its panel is 3.17-reworked.
+
+**Key findings.** (1) The composer files are fork-untouched vs vendor 3.16.2 —
+only SessionPane needed a three-way merge; official 3.16.3's composer is the
+v3.17.1 file minus identified churn, EXCEPT the settle order (official:
+attachments-first, finalize-last) and the kept `draftSubmissionClaimed`/
+`submittedCommandResolved` booleans, which 3.17 refactored away.
+(2) `inputTiming` (inputStartTime/inputFirstCharTime frozen at send click)
+exists ONLY in official 3.16.3 — vendor 3.16.2 lacks it and 3.17.1 replaced
+the rework; reconstructed from the decoded bundle (helpers already existed in
+the fork base). (3) The office-runtime session unit shipped complete in 3.16.3
+(plugin 0.2.1, isolation=workspace) but the desktop bundle never contains the
+server-cli — deferred (f) remains documentary-only (tickets name hotfix
+commits; code taken from v3.17.1 which contains them). (4) `persistComposerContent`,
+`inputPending`, `setAllowedDisplayModes`, MOBILE_MCP_SYNC allowlist,
+`insertLineBreak` terminal-IME fallback are 3.17-only by occurrence probes.
+
+**Conventions.** New R-rows carry the same `reconstructed` status. No U/N
+numbers consumed (vendor parity, no charter intents). Branch naming per the
+post-ADR-034 SOP: short-lived recon branch, fast-forward onto `patch/3.16.3`
+after gates, manifest rows added before landing.
+
+**Verification.** Root typecheck green; lint 0 errors / 98 warnings = exactly
+the vendor baseline (one self-introduced unused-import set fixed in
+`69952003`); db:schema:check green (validation.ts touched); architecture:check
+--changed 0; full root vitest suite + CLI node:test results recorded in the
+sync log. No engineering-gate exceptions needed (U76 not exercised this run).
+
+**Not contributed upstream.** Fork-internal reconstruction.
+
 ## Retirement record: patch/3.14.3, patch/3.15.1, patch/3.16.1 deleted locally {2026-11-02}
 
 Release-run decision (user-set scope): the three old patch lines are retired

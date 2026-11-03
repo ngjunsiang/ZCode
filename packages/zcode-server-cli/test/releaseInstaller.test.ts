@@ -189,8 +189,12 @@ describe("release installer", () => {
     const first = await installer.installArchive({ archivePath, target: "linux-x64", version: "2.1.0" });
     await writeFile(join(first.releaseDir, "runtime", "server-core.js"), "tampered", "utf8");
 
+    // 同版本重装修复损坏副本（ticket 03）：identity 缺失/内容篡改的已装 release 在重装时
+    // 被替换为校验过的 incoming，而不是永久拒绝。
+    const repaired = await installer.installArchive({ archivePath, target: "linux-x64", version: "2.1.0" });
+    expect(repaired.releaseDir).toBe(first.releaseDir);
     await expect(
-      installer.installArchive({ archivePath, target: "linux-x64", version: "2.1.0" }),
-    ).rejects.toThrow(/immutable release conflict/);
+      readFile(join(repaired.releaseDir, "runtime", "server-core.js"), "utf8"),
+    ).resolves.toBe("");
   });
 });
