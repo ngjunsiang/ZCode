@@ -5,7 +5,7 @@ Format: ADR-style. `{Confirmed}` = user-selected via AskUserQuestion (2026-10-09
 the change here.
 Standing user directives at the bottom.
 
-## ADR-001: Fork hosting model — commits on main + manifest + rebase  {Confirmed — user-selected 2026-10-09}
+## ADR-001: Fork hosting model — commits on main + manifest + rebase  {Superseded by ADR-013 + ADR-030 — retired 2026-11-03}
 
 Fork work = a short series of normal commits on `main` on top of the latest vendor
 commit. Upstream pull = land vendor squash commit → mandatory changelog review →
@@ -14,7 +14,7 @@ Alternatives rejected: patch files + `git am` (harsher rejects, tree not live);
 long-lived fork branch (diverges from the repo's main-based vendor flow, doubles
 integration work).
 
-## ADR-002: Include the stream-recovery gate fix, as its own commit  {Confirmed — user-selected 2026-10-09}
+## ADR-002: Include the stream-recovery gate fix, as its own commit  {Executed/historical — retired 2026-11-03; the fix itself is charter U5/U6, revert trigger lives in PATCHES.md}
 
 Terminal rate-limit errors (quota) are treated as transient by core's stream
 recovery (`model_rate_limited` ∈ `TRANSIENT_ERROR_CODES`; matcher never consults
@@ -34,7 +34,7 @@ the UI logs rejections. Saves three upstream edits (hostCapabilitiesSchema + two
 hello sites). Revisit trigger: if a deployment mode with independent CLI/desktop
 versioning appears, add the flag then (per `research-resume-turn.md` §F6).
 
-## ADR-004: `.fork/` gitignored via `.git/info/exclude`  {Confirmed — user-selected 2026-10-09}
+## ADR-004: `.fork/` gitignored via `.git/info/exclude`  {Superseded by ADR-017 — retired 2026-11-03 (still literally true on main)}
 
 Zero diff to any upstream file (even `.gitignore` untouched). Cost: exclude rule is
 per-clone; re-add via `echo ".fork/" >> .git/info/exclude` on fresh clones
@@ -996,7 +996,7 @@ U76 discipline — upstream code, not fork adoption.
 
 **Not contributed upstream.** Fork-internal process.
 
-## ADR-032: hydra 3.16.x port + C-1 promotion  {2026-10-23}
+## ADR-032: hydra 3.16.x port + C-1 promotion  {Historical — superseded by ADR-034, retired 2026-11-03 (hydra line + package deleted)}
 
 **Context.** Hydra (the `zcode-hydra` test package built from the hydra dev
 line) is the user's daily driver — the exp multi-account series (exp-01..04)
@@ -1323,6 +1323,31 @@ case also pre-exists at base (corrupt-bfs-asset rejection). No
 engineering-gate exceptions needed (U76 not exercised this run).
 
 **Not contributed upstream.** Fork-internal reconstruction.
+
+## ADR retirement record — 001, 002, 004, 032 {2026-11-03}
+
+Audit of all 33 ADRs on this line after the deferred-units reconstruction
+(ADR-037) landed and the 3.16.3-fork.1 package installed:
+
+- **ADR-001** superseded by ADR-013 (branch layout) + ADR-030 (manifest
+  charter). Commits-on-main + rebase-on-pull no longer describe the flow.
+- **ADR-002** executed/historical: the stream-recovery gate fix is charter
+  (U5/U6, manifest-tracked); only the one-time "own commit" decision is spent.
+  Its revert trigger (upstream refactoring streaming-recovery/
+  streaming-tool-coordinator) remains visible via the manifest rows.
+- **ADR-004** superseded by ADR-017 (.fork/ tracked on patch branches);
+  the info/exclude rule survives only on the vendor-mirror main.
+- **ADR-032** historical: hydra dev line + package deleted by ADR-034;
+  the operative consolidation record is ADR-034.
+
+Everything else audited and kept — notably the resumeTurn/Auto-Resume family
+(ADR-003, 005–010, 012, 014–015, 018–020, 026, 028–029; still the I-1/I-2
+spec — the 3.16.3 reconstruction touched none of those paths), the perf trio
+(ADR-016/022/027), ADR-021 (dev.sh exit-75), ADR-024 (packaging identity),
+ADR-033 (Electron 41 — load-bearing for the R14/R15 Electron-44 exclusions),
+ADR-011 (testing convention, operative on 3.16.x; 3.17.x moved fork tests to
+the engineering suite per U87), and ADR-013/017/023/030/031/034/035/037.
+Known numbering gap: ADR-025 (Windows-lineage renumber collision).
 
 ## Retirement record: patch/3.14.3, patch/3.15.1, patch/3.16.1 deleted locally {2026-11-02}
 
