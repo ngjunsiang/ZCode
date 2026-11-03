@@ -1307,8 +1307,20 @@ after gates, manifest rows added before landing.
 **Verification.** Root typecheck green; lint 0 errors / 98 warnings = exactly
 the vendor baseline (one self-introduced unused-import set fixed in
 `69952003`); db:schema:check green (validation.ts touched); architecture:check
---changed 0; full root vitest suite + CLI node:test results recorded in the
-sync log. No engineering-gate exceptions needed (U76 not exercised this run).
+--changed 0; **full root vitest suite** 20,025 passed / 22 skipped with one
+failure that pre-exists at the branch base (`storagePreparationProtocol`
+cannot resolve `@zcode/adapters/storage` through the root suite — cross-package
+runner issue, not a behavior change; the affected gate skips it identically).
+CLI gates: `cli.unit.test.ts` 193/193, argument-parsing 3/3; office-runtime
+vitest 83/83 (per-session suites from R14); server-cli package tests 39/39
+after re-anchoring to the ticketed mechanisms (the first full-suite run
+surfaced 38 regressions + 4 base-red files; all repaired in the test-realignment
+commit — retained unit tests re-anchored via
+`test/helpers/testComposerDraftOwner.ts`, and three gaps from yesterday's
+scoped affected run completed: R1 help-menu expectation, R3 package-lock
+version sync, R4 last-tab-close deletion semantics). `sea-runtime-tools` 1
+case also pre-exists at base (corrupt-bfs-asset rejection). No
+engineering-gate exceptions needed (U76 not exercised this run).
 
 **Not contributed upstream.** Fork-internal reconstruction.
 
