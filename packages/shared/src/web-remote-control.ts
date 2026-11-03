@@ -376,6 +376,7 @@ export type WebRemoteControlPlatformResponse =
   | WebRemoteControlPlatformErrorResponse;
 
 export interface WebRemoteControlExternalLocalWorkspaceBridge {
+  terminalOwnerId?: string;
   bridgeSessionId: string;
   bridgeGeneration?: number;
   recoveryId?: string;
@@ -386,6 +387,7 @@ export interface WebRemoteControlExternalLocalWorkspaceBridge {
 }
 
 export interface WebRemoteControlExternalRemoteWorkspaceBridge {
+  terminalOwnerId?: string;
   bridgeSessionId: string;
   bridgeGeneration?: number;
   recoveryId?: string;
@@ -404,6 +406,7 @@ export type WebRemoteControlExternalWorkspaceBridge =
   | WebRemoteControlExternalRemoteWorkspaceBridge;
 
 export interface WebRemoteControlBootstrapRequestPayload {
+  terminalClientSessionId?: string;
   zcode_type: "bootstrap-request";
   requestId: string;
 }
@@ -433,6 +436,7 @@ export interface WebRemoteControlWorkspaceListUpdatedPayload {
 }
 
 export interface WebRemoteControlWorkspaceBridgeOpenPayload {
+  terminalClientSessionId?: string;
   zcode_type: "workspace-bridge-open";
   requestId: string;
   bridgeSessionId: string;
@@ -559,7 +563,8 @@ export interface WebRemoteControlBridgeDegradedPayload {
     | "rpc-frame-gap"
     | "buffer-overflow"
     | "buffer-timeout"
-    | "source-session-replaced";
+    | "source-session-replaced"
+    | "terminal-owner-ended";
   seq?: number;
   expectedSeq?: number;
   droppedCount?: number;

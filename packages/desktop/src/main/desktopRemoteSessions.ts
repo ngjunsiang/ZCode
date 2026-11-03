@@ -1511,6 +1511,7 @@ export function createRemoteWorkspaceSessionManager(options: {
     workspaceIdentity: string;
     workspaceKey: string;
     clientMode: "web-remote-replayable";
+    terminalOwnerId?: string;
   }): {
     process: ElectronUtilityProcess;
     port: MessagePortMain;
@@ -1554,6 +1555,7 @@ export function createRemoteWorkspaceSessionManager(options: {
         requestId: randomUUID(),
         attachmentId: randomUUID(),
         clientMode: params.clientMode,
+        ...(params.terminalOwnerId ? { terminalOwnerId: params.terminalOwnerId } : {}),
         scope: {
           kind: "remote",
           remoteSessionId: params.remoteSessionId,

@@ -51,6 +51,7 @@ import {
   IProviderSettingsService,
   ISettingService,
   ISourceServerManagementService,
+  ITerminalService,
   IWindowControllerService,
   IConversationShareService,
   IPromptAttachmentTransferService,
@@ -71,6 +72,7 @@ import {
   remoteProjectHostIdForTarget,
   prepareRemoteServerConnection,
   bindRemoteProjectIdentities,
+  createRemoteIdentityRegistrationCache,
   getOffPeakRequestAuthBuilder,
   disposeServiceResources,
   disposeServiceResourcesAndWait,
@@ -173,7 +175,11 @@ import {
 import { connectServerRemote, type ServerRemoteConnection } from "./serverRemoteConnection.js";
 import { bindBotGroupTaskScope } from "./botGroupTaskScope.js";
 import { createWindowHostAttachmentRegistry } from "./windowHostAttachmentRegistry.js";
-import { exposeWindowHostAttachmentServices } from "./windowHostAttachmentRpcPolicy.js";
+import {
+  exposeWindowHostAttachmentServices,
+  createWindowHostTerminalOwners,
+  createTerminalScope,
+} from "./windowHostAttachmentRpcPolicy.js";
 import { scopeConversationShareServiceForAttachment } from "./conversationShareAttachmentService.js";
 import {
   createWindowRemoteConnectionRegistry,
@@ -2818,6 +2824,14 @@ function createControllerRoutedTaskService(
   });
 }
 
+const terminalOwners = createWindowHostTerminalOwners((error) => {
+  logger.warn("failed to dispose mobile terminal owner", error);
+});
+// 项目树/发送前目录解析的远端身份登记，按物理连接去重（见 createRemoteIdentityRegistrationCache）。
+// Registry 路径带 Host 目录的 legacy hint，Manager 路径不带；两者分开缓存，各自的首次登记请求保持不变。
+const registryProjectIdentityRegistrations = createRemoteIdentityRegistrationCache();
+const managerProjectIdentityRegistrations = createRemoteIdentityRegistrationCache();
+
 function exposeServicesOnMessagePort(
   port: Electron.MessagePortMain,
   services: ServiceCollection,
@@ -2825,7 +2839,27 @@ function exposeServicesOnMessagePort(
   clientMode: ZCodeAgentV4ClientMode = "desktop-continuous",
   attachmentScope: WindowHostAttachmentScope = { kind: "local" },
   capabilities?: HostRemoteConnectionCapabilities,
+  terminalOwnerId?: string,
 ): ExposedServicePortHandle {
+  const terminal = services.getOptional(ITerminalService);
+  const legacyTerminalScope =
+    clientMode === "web-remote-replayable" && terminal && !terminalOwnerId
+      ? createTerminalScope(terminal, (error) =>
+          logger.warn("failed to dispose mobile attachment terminal", error),
+        )
+      : undefined;
+  const scopedTerminal =
+    clientMode === "web-remote-replayable" && terminal
+      ? terminalOwnerId
+        ? terminalOwners.bind(
+            terminalOwnerId,
+            attachmentScope.kind === "remote"
+              ? `remote:${attachmentScope.remoteSessionId}`
+              : "local",
+            terminal,
+          )
+        : legacyTerminalScope!.service
+      : undefined;
   const wrappedPort = wrapElectronPort(port);
   const protocol = new MessagePortProtocol(wrappedPort);
   // remote 模式延迟发送 Initialize：远程建连需要时间，如果构造时就发 Initialize，
@@ -2902,6 +2936,7 @@ function exposeServicesOnMessagePort(
       ),
     );
   }
+  if (scopedTerminal) overrides.set(ITerminalService.channelName, scopedTerminal);
   exposeWindowHostAttachmentServices({
     server,
     services,
@@ -2936,6 +2971,7 @@ function exposeServicesOnMessagePort(
       disposed = true;
       flowStateDisposable.dispose();
       controllerAttachment.dispose();
+      legacyTerminalScope?.dispose();
       void disposePromptAttachmentTransfer?.().catch((error: unknown) => {
         logger.warn("failed to dispose remote attachment transfer", error);
       });
@@ -2993,8 +3029,16 @@ const windowHostAttachmentRegistry = createWindowHostAttachmentRegistry<
       capabilities: windowRemoteConnectionRegistry.resolveScopedCapabilities(scope),
     };
   },
-  expose: ({ port, services, clientMode, scope, capabilities }) =>
-    exposeServicesOnMessagePort(port, services, false, clientMode, scope, capabilities),
+  expose: ({ port, services, clientMode, scope, capabilities, terminalOwnerId }) =>
+    exposeServicesOnMessagePort(
+      port,
+      services,
+      false,
+      clientMode,
+      scope,
+      capabilities,
+      terminalOwnerId,
+    ),
 });
 
 function logWindowHostTopology(reason: string): void {
@@ -3005,6 +3049,7 @@ function logWindowHostTopology(reason: string): void {
 }
 
 function disposeAttachedServicePorts(): void {
+  terminalOwners.setOwner(null);
   windowHostAttachmentRegistry.dispose();
 }
 
@@ -3892,6 +3937,11 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
     return;
   }
 
+  if (msg.type === HostMessageTypes.SetTerminalOwner) {
+    terminalOwners.setOwner(msg.ownerId);
+    return;
+  }
+
   if (msg.type === HostMessageTypes.AttachServicePort) {
     if (!port) {
       logger.error("attach-service-port message missing MessagePort");
@@ -3918,6 +3968,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
         requestId: msg.requestId,
         attachmentId: msg.attachmentId,
         clientMode: msg.clientMode,
+        terminalOwnerId: msg.terminalOwnerId,
         scope: msg.scope,
         port,
       });
@@ -4127,21 +4178,30 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
                 const registered = serverId
                   ? windowRemoteConnectionRegistry.getOnlineSource(serverId)
                   : undefined;
-                if (registered && serverId)
+                if (registered && serverId) {
+                  // Registry handle 跨 Source 重连不换代；必须按物理连接去重，Core 重启后才会重新登记。
+                  const physicalConnection =
+                    registered.capabilities?.physicalOwner?.() ?? registered.services;
                   return bindRemoteProjectIdentities(
                     registered.services.get(IProjectService),
-                    async (workspacePath) => {
-                      const workspaceIdentity = buildServerRemoteWorkspaceIdentity({
-                        serverId,
+                    (workspacePath) =>
+                      registryProjectIdentityRegistrations(
+                        physicalConnection,
                         workspacePath,
-                      });
-                      await registered.capabilities?.bindWorkspaceIdentity?.({
-                        workspacePath,
-                        stableWorkspaceIdentity: workspaceIdentity,
-                      });
-                      return workspaceIdentity;
-                    },
+                        async () => {
+                          const workspaceIdentity = buildServerRemoteWorkspaceIdentity({
+                            serverId,
+                            workspacePath,
+                          });
+                          await registered.capabilities?.bindWorkspaceIdentity?.({
+                            workspacePath,
+                            stableWorkspaceIdentity: workspaceIdentity,
+                          });
+                          return workspaceIdentity;
+                        },
+                      ),
                   );
+                }
                 const source = sourceServerConnectionManager?.listStates().find(
                   (state) =>
                     state.sourceServerId &&
@@ -4164,15 +4224,20 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
                     virtualProjects: connection.serverInfo.capabilities.virtualProjects,
                     sourceServices: activeServices ?? undefined,
                   }),
-                  async (workspacePath) => {
-                    await connection.services.sourceServerWorkspaceService.resolveWorkspace({
+                  (workspacePath) =>
+                    managerProjectIdentityRegistrations(
+                      connection.services,
                       workspacePath,
-                    });
-                    return buildServerRemoteWorkspaceIdentity({
-                      serverId: sourceServerId,
-                      workspacePath,
-                    });
-                  },
+                      async () => {
+                        await connection.services.sourceServerWorkspaceService.resolveWorkspace({
+                          workspacePath,
+                        });
+                        return buildServerRemoteWorkspaceIdentity({
+                          serverId: sourceServerId,
+                          workspacePath,
+                        });
+                      },
+                    ),
                 );
               },
               parentPort,

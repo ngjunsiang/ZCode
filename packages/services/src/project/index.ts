@@ -7,6 +7,32 @@ import { isAbsolute, join, normalize } from "node:path";
 import type { ProjectRepositoryContract } from "#src/project-storage/contract.js";
 import type { IProjectService, ProjectDirectories, VirtualProject } from "#src/project/contract.js";
 export { IProjectService } from "#src/project/contract.js";
+
+/**
+ * 项目树/发送前目录解析的远端身份登记，按物理连接去重（Registry handle 跨 Source 重连不换代，
+ * 必须按物理连接去重，Core 重启后才会重新登记）。同一连接同一 workspace 只登记一次；
+ * 失败只删除缓存条目，让下一次读取重新登记。
+ */
+export function createRemoteIdentityRegistrationCache(): (
+  physicalConnection: object,
+  workspacePath: string,
+  register: () => Promise<string>,
+) => Promise<string> {
+  const byConnection = new WeakMap<object, Map<string, Promise<string>>>();
+  return (physicalConnection, workspacePath, register) => {
+    const byPath = byConnection.get(physicalConnection) ?? new Map<string, Promise<string>>();
+    byConnection.set(physicalConnection, byPath);
+    const registered = byPath.get(workspacePath);
+    if (registered) return registered;
+    const flight = register();
+    byPath.set(workspacePath, flight);
+    // 调用方照常收到失败；这里只删除缓存，让下一次读取重新登记。
+    flight.catch(() => {
+      if (byPath.get(workspacePath) === flight) byPath.delete(workspacePath);
+    });
+    return flight;
+  };
+}
 export { createLegacySingleRootProjectService } from "#src/project/legacy-single-root.js";
 export {
   createTaskAutoArchiveScheduler,

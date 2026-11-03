@@ -130,6 +130,7 @@ export const webRemoteControlFailureReasonSchema = z.enum([
 
 export const webRemoteControlExternalWorkspaceBridgeSchema = z.discriminatedUnion("kind", [
   z.object({
+    terminalOwnerId: webRemoteControlTransportIdSchema.optional(),
     bridgeSessionId: webRemoteControlTransportIdSchema,
     bridgeGeneration: z.number().int().nonnegative().optional(),
     recoveryId: webRemoteControlTransportIdSchema.optional(),
@@ -139,6 +140,7 @@ export const webRemoteControlExternalWorkspaceBridgeSchema = z.discriminatedUnio
     initialTaskId: nonEmptyStringSchema.optional(),
   }),
   z.object({
+    terminalOwnerId: webRemoteControlTransportIdSchema.optional(),
     bridgeSessionId: webRemoteControlTransportIdSchema,
     bridgeGeneration: z.number().int().nonnegative().optional(),
     recoveryId: webRemoteControlTransportIdSchema.optional(),
@@ -678,6 +680,7 @@ export const hostDisposeRemoteWorkspaceSessionMessageSchema = z
 export const hostAttachServicePortMessageSchema = z
   .object({
     type: z.literal("attach-service-port"),
+    terminalOwnerId: nonEmptyStringSchema.optional(),
     // main 只能声明 attachment 来源；connectionId 仍由 host process 分配。
     // desktop reload/remote reattach 必须显式 continuous，手机 shared-host 必须 replayable。
     requestId: nonEmptyStringSchema,
@@ -979,6 +982,9 @@ export const hostIncomingMessageSchema = z.discriminatedUnion("type", [
   hostBindRemoteWorkspaceContextMessageSchema,
   hostCancelRemoteWorkspaceBindMessageSchema,
   hostDisposeRemoteWorkspaceSessionMessageSchema,
+  z
+    .object({ type: z.literal("set-terminal-owner"), ownerId: nonEmptyStringSchema.nullable() })
+    .strict(),
   hostAttachServicePortMessageSchema,
   hostDetachServicePortMessageSchema,
   hostDisposeMessageSchema,

@@ -1,6 +1,7 @@
-import type { IChannelServer } from "@zcode/rpc";
+import type { IDisposable, IChannelServer } from "@zcode/rpc";
 import {
   ServiceCollection,
+  type ITerminalService,
   IProjectService,
   IRemoteProjectService,
   IBroadcastService,
@@ -17,6 +18,8 @@ const WEB_REMOTE_REPLAYABLE_ALLOWED_CHANNELS = new Set<string>([
   ServiceChannels.File,
   ServiceChannels.MediaPreview,
   ServiceChannels.System,
+  // 手机终端此前被白名单挡在服务调用前并超时；已配对 attachment 复用原终端服务。
+  ServiceChannels.Terminal,
   ServiceChannels.Git,
   ServiceChannels.GitCheckpoint,
   ServiceChannels.Setting,
@@ -109,4 +112,97 @@ export function exposeWindowHostAttachmentServices(params: {
     params.overrides,
     resolveWindowHostServiceExposurePolicy(params.clientMode),
   );
+}
+
+
+/** 手机终端属于页面 owner，不属于可随导航换代的 RPC attachment。 */
+export function createWindowHostTerminalOwners(onCleanupError: (error: unknown) => void) {
+  let current:
+    | { id: string; scopes: Map<string, ReturnType<typeof createTerminalScope>> }
+    | undefined;
+  return {
+    setOwner(id: string | null): void {
+      if (current?.id === id) return;
+      const previous = current;
+      current = id === null ? undefined : { id, scopes: new Map() };
+      // 先撤销旧 owner，再异步回收；旧 attachment 和晚到 create 均不能复活它。
+      for (const scope of previous?.scopes.values() ?? []) scope.dispose();
+    },
+    bind(ownerId: string, scopeKey: string, base: ITerminalService): ITerminalService {
+      if (current?.id !== ownerId) throw new Error("Terminal owner has ended");
+      let scope = current.scopes.get(scopeKey);
+      if (!scope) {
+        scope = createTerminalScope(base, onCleanupError);
+        current.scopes.set(scopeKey, scope);
+      }
+      return scope.service;
+    },
+  };
+}
+
+/** 旧客户端没有页面 owner 时按 attachment 回收，避免继续产生无主 PTY。 */
+export function createTerminalScope(
+  base: ITerminalService,
+  onCleanupError: (error: unknown) => void,
+) {
+  let active = true;
+  const terminals = new Map<string, IDisposable>();
+  function assertActive(id?: string): void {
+    if (!active || (id !== undefined && !terminals.has(id))) {
+      throw new Error("Terminal owner has ended or does not own this terminal");
+    }
+  }
+  const release = async (id: string) => {
+    await base.dispose({ id });
+    terminals.get(id)?.dispose();
+    terminals.delete(id);
+  };
+  const service: ITerminalService = {
+    async create(params) {
+      assertActive();
+      const result = await base.create(params);
+      // create 跨 RPC/加载 await；owner 已结束时必须回收返回的真实 PTY，不能只丢响应。
+      if (!active) {
+        await base.dispose({ id: result.id });
+        throw new Error("Terminal owner has ended");
+      }
+      const subscription = base.onDynamicExit(result.id)(() => {
+        terminals.get(result.id)?.dispose();
+        terminals.delete(result.id);
+      });
+      terminals.set(result.id, subscription);
+      return result;
+    },
+    async write(params) {
+      assertActive(params.id);
+      await base.write(params);
+    },
+    async resize(params) {
+      assertActive(params.id);
+      await base.resize(params);
+    },
+    async dispose({ id }) {
+      if (!active || !terminals.has(id)) return;
+      await release(id);
+    },
+    onDynamicData(id) {
+      assertActive(id);
+      return base.onDynamicData(id);
+    },
+    onDynamicExit(id) {
+      assertActive(id);
+      return base.onDynamicExit(id);
+    },
+  };
+  return {
+    service,
+    dispose(): void {
+      if (!active) return;
+      active = false;
+      for (const [id, subscription] of terminals) {
+        subscription.dispose();
+        void release(id).catch(onCleanupError);
+      }
+    },
+  };
 }

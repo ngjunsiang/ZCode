@@ -1067,6 +1067,7 @@ async function bootstrapExternalRelayWebRemoteControl(
 ): Promise<void> {
   if (connection.signal.aborted) return;
   const { params: relayParams, getToken } = connection;
+  const terminalClientSessionId = createWebRemoteControlRequestId("terminal-page");
   seedStableWebRemoteControlClientId(relayParams.deviceSid);
   // 平台只是展示偏好：取本机按 MID 记住的记录，扫码直连的陌生设备显示通用电脑图标。
   const connectingDevice: WebRemoteControlConnectingDevice = {
@@ -1504,7 +1505,11 @@ async function bootstrapExternalRelayWebRemoteControl(
   const requestBootstrap = async (): Promise<WebRemoteControlWindowBootstrapResult> => {
     const requestId = createWebRemoteControlRequestId("bootstrap");
     const response = await requestAppPayload(
-      { zcode_type: "bootstrap-request", requestId },
+      {
+        zcode_type: "bootstrap-request",
+        requestId,
+        terminalClientSessionId,
+      },
       (
         payload,
       ): payload is Extract<WebRemoteControlAppPayload, { zcode_type: "bootstrap-response" }> =>
@@ -1666,6 +1671,7 @@ async function bootstrapExternalRelayWebRemoteControl(
         {
           zcode_type: "workspace-bridge-open",
           requestId: createWebRemoteControlRequestId("workspace-bridge"),
+          terminalClientSessionId,
           bridgeSessionId,
           bridgeGeneration,
           ...(currentRecoveryId ? { recoveryId: currentRecoveryId } : {}),
@@ -1796,6 +1802,7 @@ async function bootstrapExternalRelayWebRemoteControl(
             initialTaskId={bridge.initialTaskId}
             initialTaskDraft={initialTaskDraft}
             composerClientNamespace={`mobile:${relayParams.deviceMid ?? relayParams.deviceSid}`}
+            terminalOwnerId={bridge.terminalOwnerId}
             initialSidebarFileTreeOpen={initialSidebarFileTreeOpen}
             initialWebRemoteControlMobileNavigationIntent={initialNavigationIntent}
             webRemoteControlTerminalTransportState={terminalTransportState}
