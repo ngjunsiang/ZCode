@@ -10,6 +10,7 @@ import {
   CORE_KILL_TIMEOUT_MS,
   CORE_READY_TIMEOUT_MS,
   CORE_STOP_GRACE_TIMEOUT_MS,
+  SERVER_READY_WAIT_TIMEOUT_MS,
   controlRequestSchema,
   createStoppedServerStatus,
   serverStatusSchema,
@@ -278,18 +279,20 @@ async function runServe(
       startupMode === "service" && (await hasLegacyServiceRegistration(layout));
     const existing = await readControlStatus(layout, 500);
     if (existing && (existing.state === "ready" || existing.state === "starting")) {
-      if ((existing.serviceRegistered && !legacyIdentityMigration) || startupMode === "fallback") {
-        if (json) stdout(io, existing);
-        else
-          stdout(
-            io,
-            `ZCode Server ${existing.state} at ${existing.host ?? ""}:${existing.port ?? ""}`,
-          );
+      // Bug 原因：fallback 现在可能是 systemd 装载失败的正常结果。旧逻辑在服务管理器可用时停掉空闲
+      // fallback 再注册，重连时只会再次注册失败并重新拉起；有运行任务时还直接报错，连接被阻断。
+      // 存活的 daemon 一律复用，只有同 root 的旧 identity service 仍需迁移。
+      if (!legacyIdentityMigration) {
+        // Bug 原因：复用 starting 的 Supervisor 时曾立即以 exit 0 返回 port:null，Desktop 只认带端口的
+        // 成功结果，于是报 "did not report a valid ingress port"，daemon 随后照常 ready。
+        const reused = existing.state === "ready" ? existing : await waitForControlReady(layout);
+        if (json) stdout(io, reused);
+        else stdout(io, `ZCode Server ${reused.state} at ${reused.host ?? ""}:${reused.port ?? ""}`);
         return 0;
       }
       if (existing.runningTaskCount > 0) {
         throw new Error(
-          `Cannot replace fallback daemon while ${existing.runningTaskCount} task(s) are running; stop the server first`,
+          `Cannot replace legacy service daemon while ${existing.runningTaskCount} task(s) are running; stop the server first`,
         );
       }
       // 旧 fallback 会持有 data-root lock，直接注册并启动 OS service 只能
@@ -306,10 +309,16 @@ async function runServe(
     }
     const baselineUpdatedAt = (await readPersistedStatus(layout))?.updatedAt ?? 0;
     let serviceStarted = false;
+    let serviceFallbackReason: string | undefined;
     let childEarlyExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+    let reapForkedSupervisor: (() => Promise<void>) | undefined;
     if (startupMode === "service") {
-      const { createDaemonServiceDescriptor, registerService, serviceDescriptorPath } =
-        await import("./platform/serviceManager.js");
+      const {
+        createDaemonServiceDescriptor,
+        isServiceLoadFailure,
+        registerService,
+        serviceDescriptorPath,
+      } = await import("./platform/serviceManager.js");
       await writeStableLauncher(layout, platform, {
         command: process.execPath,
         entry: process.argv[1] ?? fileURLToPath(import.meta.url),
@@ -319,10 +328,20 @@ async function runServe(
       const descriptorPath = serviceDescriptorPath(layout, descriptor);
       await writeFile(descriptorPath, descriptor.content, "utf8");
       await unregisterLegacyServiceForRoot(layout);
-      // 服务管理器已通过能力探测后，注册失败表示权限、descriptor 或真实系统异常。
-      // 此时必须向调用方返回根因，不能再用 detached fallback 掩盖。
-      await registerService(descriptor, descriptorPath);
-      serviceStarted = true;
+      try {
+        await registerService(descriptor, descriptorPath);
+        serviceStarted = true;
+      } catch (error) {
+        // Bug 原因：能力探测只证明 user manager 的 bus 能连上。enable 由 manager 用它自己的组列表和
+        // 挂载视图读取 unit；manager 启动后才加入的组、manager 的私有 /tmp 都让它读不到 server root，
+        // 旧规则把这次失败直接返回，SSH 每次重连都失败，而同一 root 的 detached fallback 能正常运行。
+        // 装载阶段失败时本次没有启动任何 unit，改用 fallback 并带回原因；启动阶段失败时 unit 已启用，
+        // 未标记阶段的错误（launchd / Task Scheduler）也不能确认现场，仍原样返回。
+        if (!isServiceLoadFailure(error)) throw error;
+        serviceFallbackReason = (error as Error).message.trim();
+        if (!json)
+          stderr(io, `Starting ZCode Server in detached fallback mode: ${serviceFallbackReason}`);
+      }
     }
     if (!serviceStarted) {
       // Bug 原因：archive bootstrap 协调更新时 import.meta.url 指向临时解压目录；handoff
@@ -347,24 +366,41 @@ async function runServe(
       child.disconnect();
       // 子 Supervisor 以 detached + stdio ignore 启动，锁冲突等启动失败时静默退出；
       // 记录早退信息让等待循环立即报告真实原因。
-      child.once("exit", (code, signal) => {
-        childEarlyExit = { code, signal };
+      const childExited = new Promise<void>((resolve) => {
+        child.once("exit", (code, signal) => {
+          childEarlyExit = { code, signal };
+          resolve();
+        });
       });
+      reapForkedSupervisor = async () => {
+        // 已 unref 的 child 不再撑住事件循环；不重新 ref 的话，CLI 会在 exit 到达前无输出地退出。
+        child.ref();
+        child.kill("SIGKILL");
+        await childExited;
+      };
     }
-    const started = await waitForPersistedStatus(
-      layout,
-      "ready",
-      baselineUpdatedAt,
-      () => {
-        if (childEarlyExit) {
-          throw new Error(
-            `ZCode Server daemon exited before ready (code=${childEarlyExit.code ?? "null"} signal=${childEarlyExit.signal ?? "none"}); check ${layout.statusFile} for details`,
-          );
-        }
-      },
-      serviceStarted,
-    );
-    if (json) stdout(io, started);
+    let started: ServerStatus;
+    try {
+      started = await waitForPersistedStatus(
+        layout,
+        "ready",
+        baselineUpdatedAt,
+        () =>
+          childEarlyExit
+            ? `ZCode Server daemon exited before ready (code=${childEarlyExit.code ?? "null"} signal=${childEarlyExit.signal ?? "none"})`
+            : undefined,
+        serviceStarted,
+      );
+    } catch (error) {
+      // Bug 原因：CLI 放弃等待后，冷启动过慢的 fallback Supervisor 仍会取锁并 ready，调用方拿到的
+      // 失败与远端事实相反，update 回滚的 stop 还可能因它尚未监听 control 而够不着、随后争锁。
+      // fallback Supervisor 由本 CLI fork，CLI 是唯一 owner：先强杀并等到 exit 再报失败
+      // （Core 经 IPC 断连自行收口，残留锁按 stale 由下一任接管）。OS service 由服务管理器持有，不越权停止。
+      await reapForkedSupervisor?.();
+      throw error;
+    }
+    // 回退原因只属于本次启动结果，不写入 status.json。
+    if (json) stdout(io, serviceFallbackReason ? { ...started, serviceFallbackReason } : started);
     else stdout(io, `ZCode Server ${started.state} at ${started.host ?? ""}:${started.port ?? ""}`);
     process.stdin.pause();
     process.stdin.destroy();
@@ -627,14 +663,33 @@ async function finishUninstall(
   }
 }
 
+// Bug 原因：Core 启动失败时 Supervisor 已把原因写进 status，CLI 等待失败却只报
+// "Timed out waiting for Server ready"，3.16.2 远端超时工单因此查不到 Core 为什么起不来。
+// 失败时追加本次启动写过的 state 与 lastExitReason；启动前的旧快照不能冒充本次原因。
+function describeStartupStatus(status: ServerStatus | null, minUpdatedAt: number): string {
+  if (!status || status.updatedAt <= minUpdatedAt) return "";
+  return ` (state=${status.state}${status.lastExitReason ? `, last exit: ${status.lastExitReason}` : ""})`;
+}
+
+// 追加的 Core 原因可能含 permission denied、ECONNREFUSED、timeout 等文本；Desktop 按文本猜类别时
+// 会因此改换 UI 标题。按原首句的类别显式带码（与追加详情前 Desktop 的判定一致），详情只用于展示。
+function startupWaitError(
+  message: string,
+  code: "remote-connection-timeout" | "remote-connection-unknown",
+): Error {
+  return Object.assign(new Error(message), { code });
+}
+
 async function waitForPersistedStatus(
   layout: ReturnType<typeof resolveServerLayout>,
   expectedState: "ready" | "stopped",
   minUpdatedAt = 0,
-  assertStillWaiting?: () => void,
+  /** 返回值非空表示等待对象已失败，值为错误首句；状态详情由本函数追加。 */
+  readEarlyFailure?: () => string | undefined,
   expectedServiceRegistered?: boolean,
 ): Promise<ServerStatus> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + SERVER_READY_WAIT_TIMEOUT_MS;
+  let lastStatus: ServerStatus | null = null;
   while (Date.now() < deadline) {
     const status = await readPersistedStatus(layout);
     if (
@@ -644,10 +699,45 @@ async function waitForPersistedStatus(
         status.serviceRegistered === expectedServiceRegistered)
     )
       return status;
-    assertStillWaiting?.();
+    lastStatus = status ?? lastStatus;
+    const earlyFailure = readEarlyFailure?.();
+    if (earlyFailure) {
+      // Supervisor 退出前写下的最终状态可能晚于本轮读取，报告前再读一次。
+      const detail = describeStartupStatus(
+        (await readPersistedStatus(layout)) ?? lastStatus,
+        minUpdatedAt,
+      );
+      throw startupWaitError(
+        `${earlyFailure}${detail || `; check ${layout.statusFile} for details`}`,
+        "remote-connection-unknown",
+      );
+    }
     await new Promise<void>((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`Timed out waiting for Server ${expectedState}`);
+  throw startupWaitError(
+    `Timed out waiting for Server ${expectedState}${describeStartupStatus(lastStatus, minUpdatedAt)}`,
+    "remote-connection-timeout",
+  );
+}
+
+// 复用的 Supervisor 已在运行，control 是它的实时状态；status.json 可能是旧 Supervisor 留下的
+// ready 快照（端口已失效），不能作为复用时的就绪依据。
+async function waitForControlReady(
+  layout: ReturnType<typeof resolveServerLayout>,
+): Promise<ServerStatus> {
+  const deadline = Date.now() + SERVER_READY_WAIT_TIMEOUT_MS;
+  let lastStatus: ServerStatus | null = null;
+  while (Date.now() < deadline) {
+    const status = await readControlStatus(layout, 500);
+    if (status?.state === "ready") return status;
+    lastStatus = status ?? lastStatus;
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  }
+  // 复用的是正在运行的 Supervisor，control 返回的就是它当前的状态，不需要按启动基线过滤。
+  throw startupWaitError(
+    `Timed out waiting for Server ready${describeStartupStatus(lastStatus, 0)}`,
+    "remote-connection-timeout",
+  );
 }
 
 async function waitForSupervisorReady(supervisor: {

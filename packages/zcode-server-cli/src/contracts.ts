@@ -17,6 +17,10 @@ export const CONTROL_CLOSE_TIMEOUT_MS = 2_000;
 // stop 等待方需要覆盖宽限 + 强杀等待 + control socket 关闭，另留状态落盘和锁释放余量。
 export const SERVER_STOP_WAIT_TIMEOUT_MS =
   CORE_STOP_GRACE_TIMEOUT_MS + CORE_KILL_TIMEOUT_MS + CONTROL_CLOSE_TIMEOUT_MS + 3_000;
+// serve --daemon 等待方需要覆盖 Supervisor 冷启动（进程拉起、模块加载、取锁、启动恢复、control 监听）
+// 与 Core ready 预算。Bug 原因：旧的 10 秒写死上限短于 Supervisor 自身的 15 秒 Core ready 预算；机器繁忙时
+// Supervisor 冷启动实测可达 8～14 秒，CLI 先报 "Timed out waiting for Server ready"，daemon 随后照常 ready。
+export const SERVER_READY_WAIT_TIMEOUT_MS = CORE_READY_TIMEOUT_MS + 10_000;
 
 export const lifecycleStateSchema = z.enum([
   "starting",
