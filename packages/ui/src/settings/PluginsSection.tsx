@@ -33,13 +33,7 @@ import {
   PluginStoreAdvancedSection,
   PluginStoreDetailView,
 } from "@/settings/PluginStoreDetailView.js";
-import {
-  PluginStoreCard,
-  PluginStoreItemMenu,
-  PluginStoreOpenUiButton,
-  PluginStoreUpdateButton,
-  type PluginStoreActions,
-} from "@/settings/PluginStoreCard.js";
+import { PluginStoreCard, type PluginStoreActions } from "@/settings/PluginStoreCard.js";
 import { SettingsBreadcrumbReporter } from "@/settings/SettingsHeaderBreadcrumb.js";
 import {
   buildPluginConfigPatch,
