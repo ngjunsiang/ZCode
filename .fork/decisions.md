@@ -1349,6 +1349,22 @@ ADR-011 (testing convention, operative on 3.16.x; 3.17.x moved fork tests to
 the engineering suite per U87), and ADR-013/017/023/030/031/034/035/037.
 Known numbering gap: ADR-025 (Windows-lineage renumber collision).
 
+## Retirement record: patch/3.16.2 retired locally after 3.16.3-fork.1 stability review {2026-11-05}
+
+Scheduled Thu-night review (2000 hrs) after ~48–79 h of zcoder 3.16.3-1 runtime.
+Evidence: zero coredumps, zero journal crash/OOM/GPU-hang lines, zero app error
+lines, no Crashpad dumps; the running instance (PID 1296334) had been up
+2d 9.5 h continuously since the reboot onto 3.16.3 (2026-11-03 10:27). Verdict:
+stable. User selected "retire local branch + worktree":
+- worktree `~/ngjunsiang/ZCode-3162` removed (was clean, no awt claims);
+- local branch `patch/3.16.2` (tip `3908cf15`) deleted; **origin copy stays
+  until a separate push-go** (retrievable: `git branch patch/3.16.2
+  origin/patch/3.16.2`).
+The actual rollback path is unaffected regardless: the built package
+`~/sysadmin/aur/zcoder/zcoder-3.16.2-2-x86_64.pkg.tar.zst` stays on disk
+(`pacman -U` downgrade). Remaining patch lines: `patch/3.16.3` (installed
+daily driver, pushed) and `patch/3.17.1` (ported stable candidate, pushed).
+
 ## Retirement record: patch/3.14.3, patch/3.15.1, patch/3.16.1 deleted locally {2026-11-02}
 
 Release-run decision (user-set scope): the three old patch lines are retired
