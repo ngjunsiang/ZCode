@@ -184,6 +184,22 @@ same event is ADR-033.
   24.14.0 everywhere; U86 re-applied to patch/3.17.1 unchanged. (3.16.x lines
   have carried 24.22.1 since 2026-10-26.)
 
+### I-13 The desktop app tree cannot push the host into the memory wall
+This 16 GB daily-driver box OOMs at the aggregate: oomd's victim rules
+structurally favor the biggest long-lived leaf cgroup — always the
+`app-zcode-*.scope`, because every agent CLI, build and shell lands inside
+it (2026-11-11/12: two correct-but-biased kills, 424/956 processes). ZCodeR
+bounds what it controls: the agent CLI heap is capped so a runaway session
+dies in-process; scope-level cgroup facts ride the `[memory]` heartbeat so
+incidents are diagnosable from app logs alone; and (pending approval) each
+session runs in its own cgroup so oomd kills surgically. The host-side
+guards (budgeted app scope via the desktop entry, memogarden caps) live in
+the sysadmin repo, not here. Provenance: sysadmin
+`incidents/2026-11-12-zcode-oomd-victim-selection.md` (OOM #7/#8).
+- Expressed by: U88, N26
+- Status: S5/S6 landed on patch/3.17.1; S4 (per-session cgroups) spec
+  drafted for review — `.fork/spec-memory-bounding.md`, decision = ADR-038.
+
 ## Candidates (not yet intentions — decide)
 - C-2 Web/mobile parity for Auto-Resume — blocked on upstream automation RPC
   for web-remote; deliberately desktop-only for now (I-2 scope note).
