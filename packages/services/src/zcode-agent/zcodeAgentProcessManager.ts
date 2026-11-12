@@ -282,6 +282,46 @@ const debugLog = (...args: unknown[]) => {
   serviceLog.debug(undefined, ...args);
 };
 
+/** U88 缺省堆上限（MB）。ZCODE_AGENT_MAX_OLD_SPACE_MB 可覆盖；0 = 关闭。 */
+const AGENT_MAX_OLD_SPACE_MB_DEFAULT = 1536;
+
+/**
+ * U88（内存防失控）：给 agent CLI 子进程注入 V8 老生代上限。
+ *
+ * 背景：桌面派生的 agent CLI、构建、shell 全部落进同一个 app-zcode-*.scope，
+ * 单个失控会话会把整台 16G 机器推进 swap 墙（2026-11-11/12 两次 oomd 击杀，
+ * 见 sysadmin incidents/2026-11-12-zcode-oomd-victim-selection.md 与
+ * .fork/spec-memory-bounding.md）。上限让失控会话在 CLI 进程内 OOM 退出，
+ * 而不是拖垮整机。
+ *
+ * 注入形态必须是 NODE_OPTIONS 而不是 argv：CLI 可能以 SEA 原生二进制启动
+ * （SEA 不解释 Node CLI 旗标，旗标会落进 CLI 的严格 parseArgs 直接报错——
+ * dynamic-workflow-runtime harness 的既有结论），而 NODE_OPTIONS 在
+ * Node / ELECTRON_RUN_AS_NODE 模式下都被承认，SEA 下被忽略（无害回退）。
+ *
+ * 边界：只作用于默认 resolver 链路——ZCODE_AGENT_SERVER_COMMAND 自定义命令
+ * 不注入，避免把 Node 专属语义强加给任意第三方 agent。provider runtime 的
+ * buildCleanEnv 有意识地不透传继承的 NODE_OPTIONS；这里是 fork 显式注入
+ * 自己的值，语义相反但同样是双方有意的行为。
+ */
+/** 导出仅供 vitest 契约测试（engineering manifest）；行为同上。 */
+export function resolveAgentHeapCapEnv(): Record<string, string> {
+  if (process.env.ZCODE_AGENT_SERVER_COMMAND?.trim()) {
+    return {};
+  }
+  const raw = process.env.ZCODE_AGENT_MAX_OLD_SPACE_MB?.trim();
+  const maxOldSpaceSizeMb =
+    raw === undefined || raw === "" ? AGENT_MAX_OLD_SPACE_MB_DEFAULT : Number(raw);
+  if (!Number.isInteger(maxOldSpaceSizeMb) || maxOldSpaceSizeMb < 0) {
+    warnLog("ZCODE_AGENT_MAX_OLD_SPACE_MB must be a non-negative integer; ignoring", { raw });
+    return {};
+  }
+  if (maxOldSpaceSizeMb === 0) {
+    return {};
+  }
+  return { NODE_OPTIONS: `--max-old-space-size=${maxOldSpaceSizeMb}` };
+}
+
 function createAgentStderrTail(): {
   append(line: string): void;
   snapshot(): { lineCount: number; tail: string[] };
@@ -1164,6 +1204,7 @@ export class ZCodeAgentProcessManager {
     // app 以本地开发方式启动时，让 agent 子进程也带上 ZCODE_RUNTIME_ENV=development；
     // 不再传 NODE_ENV，避免用户 shell/runtime 变量影响 ZCode 运行模式或泄漏到 Bash 工具。
     const runtimeEnv = resolveZCodeRuntimeEnv(process.env);
+    const agentHeapCapEnv = resolveAgentHeapCapEnv();
     log("ZCode agent spawn preflight", {
       workspaceKey,
       spawnPreflight,
@@ -1183,7 +1224,10 @@ export class ZCodeAgentProcessManager {
         [GEN_UI_OUTPUT_ROOT_ENV]: join(getAppConfigDir(), GEN_UI_OUTPUT_DIRECTORY),
         // 身份/隔离语义使用 workspaceIdentity；cwd 继续使用 workspacePath。
         ...buildAgentWorkspaceIdentityEnv(params.workspaceIdentity),
-        ...buildE2EAgentCoverageEnv(),
+        // U88 堆上限放在 E2E 覆盖率合并之前：覆盖率 join 接收带上限的 env，
+        // 堆上限与覆盖率 preload 两个 NODE_OPTIONS 值都不丢。
+        ...agentHeapCapEnv,
+        ...buildE2EAgentCoverageEnv({ ...process.env, ...agentHeapCapEnv }),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

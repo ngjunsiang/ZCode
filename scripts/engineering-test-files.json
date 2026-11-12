@@ -153,6 +153,7 @@
   "packages/desktop/test/windowsInstallerNshSmoke.test.ts",
   "packages/desktop/test/windowsInstallerPreserveFiles.test.ts",
   "packages/server/test/tsupConfig.test.ts",
+  "packages/services/test/agentHeapCapEnv.test.ts",
   "packages/services/test/autoResumeHostScheduler.test.ts",
   "packages/services/test/automationResumePolicy.test.ts",
   "packages/services/test/automationServiceAction.test.ts",
