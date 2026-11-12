@@ -1550,3 +1550,8 @@ exceptions:
       - packages/services/src/oauth/repo/oauthAccountStore.ts
       - packages/ui/src/hooks/useAccountSwitcher.ts
     reason: Fork-new files of the promoted multi-account feature (C-1, hydra lines only); isolated by design (I-9/I-11 divergence documentation, .fork/PATCHES.md N-series).
+  - id: fork-process-resource-cgroup-source
+    rule: unmanaged-new-file
+    paths:
+      - packages/desktop/src/main/processResourceCgroupSource.ts
+    reason: Fork-new file of the memory-bounding telemetry (I-13, N26, .fork/spec-memory-bounding.md S6)；唯一消费方是 desktopResourceTelemetry 的 [memory] 心跳，无新跨包依赖边。
