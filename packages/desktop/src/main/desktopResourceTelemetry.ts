@@ -18,6 +18,10 @@ import { getSharedFinalArmsCustomEventE2EController } from "./desktopArmsCustomE
 import { desktopRuntimeEnv } from "./desktopRuntimeEnv.js";
 import { mainMemoryDiagnosticsRegistry } from "./mainMemoryDiagnostics.js";
 import { addAppResourceTotals, type AppResourceTotals } from "./processResourceAppTotals.js";
+import {
+  latestAppScopeResourceCounters,
+  refreshAppScopeResourceCounters,
+} from "./processResourceCgroupSource.js";
 import { PROCESS_RESOURCE_SAMPLE_SOURCES } from "./processResourceSampleSourceRegistry.js";
 import {
   flushPendingProcessResourceSampleSources,
@@ -256,6 +260,9 @@ function logMemorySample(
     for (const sample of samples) {
       counters[`ws.${sample.role}`] = sample.rssKbTotal;
     }
+    // N26：scope 级 cgroup 事实（异步读，滞后 ≤1 tick），让 oomd/内核级击杀
+    // 事件能直接从 [memory] 日志重建证据链。
+    Object.assign(counters, latestAppScopeResourceCounters());
     const sample: MemorySample = {
       role: "main",
       ...memoryUsageToSampleFields(memoryUsage),
@@ -272,6 +279,9 @@ function logMemorySample(
 
 function takeSample(logger?: ResourceLogger): void {
   processResourceWindows.recordScene(resolveResourceUsageScene());
+  // N26：触发一次 scope 级 cgroup 读取（异步、至多一个在飞），供本 tick 或
+  // 下一 tick 的 [memory] 心跳合并。
+  refreshAppScopeResourceCounters();
 
   const now = Date.now();
   const samples: ProcessRoleSample[] = [];
