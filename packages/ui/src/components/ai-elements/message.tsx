@@ -15,7 +15,13 @@ import { createMathPlugin } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import type { EditorInfo, FileStat, OpenInEditorOptions } from "@zcode/shared";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  ExternalLinkIcon,
+  PanelRightIcon,
+} from "lucide-react";
 import remarkCjkFriendlyGfmStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
 import type {
   ComponentProps,
@@ -1013,7 +1019,7 @@ function MessageExternalLink({
   const platform = useOptionalPlatform();
   const handleOpen = useCallback(
     (options: { forceExternal?: boolean; forceInApp?: boolean } = {}) => {
-      // 交互语义：本机/私网白名单只决定左键单击的默认目标；右键菜单两项各自强制一个目标。
+      // 交互语义：本机/私网白名单只决定左键单击的默认目标；右键的两个打开动作各自强制一个目标。
       // 菜单「打开」过去复用左键默认行为，公网链接（如飞书文档）两项都会跳系统浏览器。
       const target = resolveMessageLinkOpenTarget({ href, ...options });
       logger.debug("[MessageExternalLink] 打开 Markdown 外链", {
@@ -1045,6 +1051,20 @@ function MessageExternalLink({
     },
     [handleOpen, onClick],
   );
+  // U89/I-14：右键菜单补「复制链接」（自上游 3.17.1 同款实现移植）。
+  // 剪贴板不可用时只记 warn，不抛错——复制失败不应打断消息交互。
+  const handleCopyLink = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard-unavailable");
+      }
+      await navigator.clipboard.writeText(href);
+    } catch (error) {
+      logger.warn("[MessageExternalLink] 复制链接失败", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
 
   return (
     <ContextMenu>
@@ -1065,14 +1085,20 @@ function MessageExternalLink({
           {children}
         </button>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
+      <ContextMenuContent className="w-52">
+        {/* 通用“打开”无法说明目标；两个打开动作同组，用文案和图标区分内置与外部浏览器。 */}
         <ContextMenuItem onSelect={() => handleOpen({ forceInApp: true })}>
-          {intl.formatMessage({ id: "common.open" })}
+          <PanelRightIcon className="size-4" />
+          <span>{intl.formatMessage({ id: "chat.message.link.openInZCode" })}</span>
         </ContextMenuItem>
-        <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => handleOpen({ forceExternal: true })}>
           <ExternalLinkIcon className="size-4" />
           <span>{intl.formatMessage({ id: "chat.previewCards.openExternal" })}</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => void handleCopyLink()}>
+          <CopyIcon className="size-4" />
+          <span>{intl.formatMessage({ id: "chat.previewCards.copyLink" })}</span>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

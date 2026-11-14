@@ -2821,6 +2821,7 @@ const zhCN: Record<string, string> = {
   "chat.previewCards.video": "视频",
   "chat.previewCards.audio": "音频",
   "chat.previewCards.openExternal": "在浏览器中打开",
+  "chat.message.link.openInZCode": "在 ZCode 中打开",
   "chat.previewCards.previewInSidePane": "预览",
   "chat.previewCards.openDefaultApp": "打开",
   "chat.previewCards.openWith": "打开方式",
