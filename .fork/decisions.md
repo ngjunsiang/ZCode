@@ -1375,3 +1375,48 @@ deleted; **origin copies are NOT deleted until the user's explicit push-go.**
 Tips at deletion: `patch/3.14.3` = `2b8841d6`, `patch/3.15.1` = `9529fe40`,
 `patch/3.16.1` = `c94c973a`. Recovery: `git branch <name> <sha>` (or from
 origin).
+
+## ADR-039: Forward backport — upstream 3.17.1's message-link menu onto patch/3.16.3 (U89–U92, I-14) {2026-11-14}
+
+User request 2026-11-14: the 3.16.3 message-link context menu has no
+"Copy URL" — add it and track it as an intent.
+
+- Reference implementation is upstream's own: v3.17.1 reworked
+  `MessageExternalLink`'s menu from the host-dependent "Open" +
+  "Open in browser" pair into two explicitly labeled open actions
+  ("Open in ZCode" / PanelRightIcon, "Open in browser" / ExternalLinkIcon,
+  one group) plus a separator and "Copy link" (CopyIcon →
+  `navigator.clipboard.writeText(href)`, warn-only on failure). The port is
+  verbatim (menu block, `chat.message.link.openInZCode` key en/zh, and the
+  upstream MLC01 E2E in `manual-review/pending/`), not a fork redesign —
+  minimal divergence, self-retiring at the next vendor bump.
+- Provenance class: this is the fork's first **forward backport** (adopting
+  post-base upstream behavior ahead of the vendor pull), distinct from the
+  R-series reconstructions (re-expressing official-3.16.3 behavior).
+  `patch/3.17.1` needs no row — it already carries the menu upstream-native
+  (verified 2026-11-14). Recorded in the PATCHES.md provenance header;
+  U89–U92 flip to `superseded-upstream` at the next vendor pull with
+  base ≥ 3.17.x.
+- Feasibility checked against the 3.16.3 tree before porting:
+  `chat.previewCards.copyLink` already exists in both locales
+  (OpenSplitButton), `PanelRightIcon` is already used (lucide 1.17), and
+  every E2E import resolves (`prepareV4ConversationE2E`/`sendV4Prompt`/
+  `waitForV4Pane`, `clearAppData`/`setCurrentElectronRendererContentSize`,
+  `__testActions`, `TID_BROWSER_ADDRESS_INPUT`,
+  `browser.electron.mock("shell")`). The only deltas were the menu block,
+  the two locale keys, and the test file.
+- Verification: root typecheck green; lint 0 errors (98 warnings = vendor
+  baseline; oxlint on the 4 touched files: 0); architecture:check --changed
+  0; oxfmt clean on all 4 files. **Desktop E2E not executed locally** — the
+  spec needs the desktop E2E app build + Xvfb harness (wdio.conf.ts); fork
+  precedent runs unit gates before landing and treats desktop E2E as a
+  manual pass, and this spec is upstream's own (still in their
+  `manual-review/pending/` staging). The first zcoder build after this
+  lands should exercise the menu manually (right-click a link: copy →
+  paste equals the URL; both open targets still work).
+- Numbering: ADR-038 stays reserved for the S4 per-session cgroup decision
+  (`agent/oom-bounding/s5-s6`, unmerged); I-13 likewise (same branch), so
+  this intent is I-14 and its rows U89–U92 (U87 = engineering-manifest row
+  shared by patch/3.17.1 + the OOM branch; U88 = OOM-only heap cap).
+- Code: `agent/link-copy-menu/u89` commit `662f59aa` off `patch/3.16.3`
+  tip `aed319fb`; merge/ff to `patch/3.16.3` on user go (push likewise).

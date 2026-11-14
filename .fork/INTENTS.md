@@ -181,6 +181,20 @@ same event is ADR-033.
 - Status: applied to the 3.16.1/3.16.2 patch+hydra lines 2026-10-26 (mise
   24.14.0 was checker-host confirmed vulnerable; 24.22.1 verified in-gates).
 
+### I-14 Message links offer copy, with open targets that say what they do
+A link rendered in a message body can be copied from its context menu, and
+the open actions name their destination — in-app pane vs system browser.
+A generic "Open" whose meaning silently depends on the link's host class
+(local/private-net whitelist) is not acceptable menu language.
+- Expressed by: U89–U92 (ADR-039) — the fork's first forward backport:
+  upstream v3.17.1's own menu rework + its E2E, adopted onto patch/3.16.3
+  ahead of the vendor base (user request 2026-11-14; the 3.16.3-era menu
+  had only "Open" / "Open in browser").
+- Status @3.16.3: expressed. `patch/3.17.1` already carries it
+  upstream-native (verified 2026-11-14) — no row needed there. At the next
+  vendor pull (base ≥ 3.17.x): mark U89–U92 `superseded-upstream`, keep
+  the intention as a watch on link-menu changes.
+
 ## Candidates (not yet intentions — decide)
 - C-2 Web/mobile parity for Auto-Resume — blocked on upstream automation RPC
   for web-remote; deliberately desktop-only for now (I-2 scope note).
