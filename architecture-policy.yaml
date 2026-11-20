@@ -2653,3 +2653,11 @@ exceptions:
     paths:
       - packages/desktop/src/main/processResourceCgroupSource.ts
     reason: Fork-new file of the memory-bounding telemetry (I-13, N26, .fork/spec-memory-bounding.md S6)；唯一消费方是 desktopResourceTelemetry 的 [memory] 心跳，无新跨包依赖边。
+  - id: fork-memory-budget-watchdog
+    rule: unmanaged-new-file
+    paths:
+      - packages/desktop/src/main/memoryBudgetWatchdog.ts
+      - packages/ui/src/store/memoryBudgetStore.ts
+      - packages/ui/src/hooks/useMemoryBudgetWarnings.ts
+      - packages/ui/src/MemoryBudgetBanner.tsx
+    reason: Fork-new files of the memory-budget watchdog (I-13, U93/N27, .fork/spec-memory-bounding.md S7)；看门狗状态机唯一消费方是 desktopResourceTelemetry 的 10s 采样 tick，renderer 三件只挂 RootShell，无新跨包依赖边。

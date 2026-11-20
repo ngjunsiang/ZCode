@@ -278,6 +278,7 @@ import {
   resolveResourceUsageScene,
   stopDesktopResourceTelemetry,
 } from "./desktopResourceTelemetry.js";
+import { setMemoryBudgetWarningSink } from "./memoryBudgetWatchdog.js";
 import { registerRendererHeapSampleIpc } from "./processResourceRendererHeapSource.js";
 import {
   registerDesktopZCodeDataSizeTelemetry,
@@ -2805,6 +2806,32 @@ app.whenReady().then(async () => {
   });
   registerDesktopStabilityMonitors(logger, crashCapturePaths);
   registerDesktopResourceTelemetry(logger);
+  // S7/U93-N27 看门狗 sink：跃迁时落日志 + 向所有窗口广播；renderer 侧负责
+  // 横幅与（critical 剧集的）本地化系统通知文案——main 无 locale 上下文，
+  // 不在 main 侧生成通知文案（desktopNotifications.ts 既有约束）。
+  setMemoryBudgetWarningSink((payload) => {
+    const logValues = {
+      level: payload.level,
+      reason: payload.reason,
+      episodeId: payload.episodeId,
+      memCurrentMib: payload.memCurrentMib,
+      memHighMib: payload.memHighMib,
+      swapCurrentMib: payload.swapCurrentMib,
+      swapMaxMib: payload.swapMaxMib,
+    };
+    if (payload.level === "critical") {
+      logger.error("[memory-budget] critical: app is throttling at its memory ceiling", logValues);
+    } else if (payload.level === "warning") {
+      logger.warn("[memory-budget] warning: cold-page swap reserve nearly full", logValues);
+    } else {
+      logger.info("[memory-budget] resolved: memory budget back inside hysteresis", logValues);
+    }
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(PlatformChannels.MemoryBudgetWarning, payload);
+      }
+    }
+  });
   // 主窗口 renderer 的 60 秒 heap 样本入口；随 App 生命周期常驻，只注册一次。
   registerRendererHeapSampleIpc();
   const defaultDataBaseDir = process.env.HOME?.trim() || homedir();

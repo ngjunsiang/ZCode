@@ -668,6 +668,22 @@ export const taskNotificationPayloadSchema = z.object({
   body: z.string(),
 });
 
+// S7/N27 内存预算看门狗：Main → Renderer 的预算水位跃迁。level=warning 表示
+// 冷页交换储备逼近上限（swap ≥85% cap 持续），critical 表示实时节流逼近
+// （mem ≥95% memory.high 持续），normal 表示水位已退到迟滞阈值以下（横幅
+// 清除信号）。current/limit 成对携带，renderer 展示与日志对账用同一份读数；
+// episodeId 供 renderer 对系统通知做单集去重（降级不改剧集号）。
+export const memoryBudgetWarningPayloadSchema = z.object({
+  level: z.enum(["warning", "critical", "normal"]),
+  reason: z.enum(["swapReserve", "memCeiling", "resolved"]),
+  episodeId: nonEmptyStringSchema,
+  memCurrentMib: z.number().nonnegative().optional(),
+  memHighMib: z.number().positive().optional(),
+  swapCurrentMib: z.number().nonnegative().optional(),
+  swapMaxMib: z.number().positive().optional(),
+});
+export type MemoryBudgetWarningPayload = z.infer<typeof memoryBudgetWarningPayloadSchema>;
+
 export const telemetryRendererContextSchema = z.object({
   uiMode: telemetryUiModeSchema.optional(),
   clientTimezone: nonEmptyStringSchema,

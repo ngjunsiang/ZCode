@@ -95,7 +95,11 @@
   "packages/desktop/test/macElectronLocales.test.ts",
   "packages/desktop/test/macosReleaseAppDoctor.test.ts",
   "packages/desktop/test/macosUpdateManifest.test.ts",
+<<<<<<< HEAD
   "packages/desktop/test/mcpAppsHostRunner.test.ts",
+=======
+  "packages/desktop/test/memoryBudgetWatchdog.test.ts",
+>>>>>>> 42516fce (fork(U93/N27): memory-budget watchdog — surface budget exhaustion before the kernel freezes the app)
   "packages/desktop/test/miseToolchainEnv.test.ts",
   "packages/desktop/test/mobileMessageEvidence.test.ts",
   "packages/desktop/test/mobilePairingDiagnostics.test.ts",

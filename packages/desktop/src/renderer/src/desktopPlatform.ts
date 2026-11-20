@@ -114,6 +114,9 @@ export function createDesktopPlatform(options: {
     onRendererActionTraceConfigChanged: window.zcode.onRendererActionTraceConfigChanged
       ? (callback) => window.zcode.onRendererActionTraceConfigChanged!(callback)
       : undefined,
+    onMemoryBudgetWarning: window.zcode.onMemoryBudgetWarning
+      ? (callback) => window.zcode.onMemoryBudgetWarning!(callback)
+      : undefined,
     reportLocalTtftBatch: (batch) => window.zcode.reportLocalTtftBatch(batch),
     reportRendererActionTraceBatch: window.zcode.reportRendererActionTraceBatch
       ? (batch) => window.zcode.reportRendererActionTraceBatch!(batch)
