@@ -34,7 +34,7 @@ import type {
   RendererActionTraceBatchV1,
   RendererActionTraceConfigV1,
 } from "./rendererActionTrace.js";
-import type { RendererHeapSample } from "./validation.js";
+import type { MemoryBudgetWarningPayload, RendererHeapSample } from "./validation.js";
 import type {
   CancelPendingRemoteConnectionRequest,
   BindRemoteWorkspaceSessionContextRequest,
@@ -411,6 +411,8 @@ export const PlatformChannels = {
   GetRendererActionTraceConfig: "zcode:get-renderer-action-trace-config",
   /** Main → Renderer：Renderer 用户操作 Trace 灰度配置变化。 */
   RendererActionTraceConfigChanged: "zcode:renderer-action-trace-config-changed",
+  /** Main → Renderer：内存预算水位告警（S7/N27 看门狗，warning/critical 两级）。 */
+  MemoryBudgetWarning: "zcode:memory-budget-warning",
   /** Renderer → Main：发送已结束的 ui_action batch。 */
   ReportRendererActionTraceBatch: "zcode:report-renderer-action-trace-batch",
   /** Renderer → Main：主窗口 renderer 每 60 秒的 heap 读数，单向 send，不需要回执。 */
@@ -1142,6 +1144,11 @@ export interface PlatformChannelMap {
   };
   [PlatformChannels.RendererActionTraceConfigChanged]: {
     request: RendererActionTraceConfigV1;
+    response: void;
+  };
+  // 单向 send：看门狗水位跃迁时 main 广播，renderer 不等回执（S7/N27）。
+  [PlatformChannels.MemoryBudgetWarning]: {
+    request: MemoryBudgetWarningPayload;
     response: void;
   };
   [PlatformChannels.ReportRendererActionTraceBatch]: {

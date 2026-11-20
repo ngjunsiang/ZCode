@@ -94,6 +94,7 @@ import type {
   OpenCuaPermissionOnboardingOptions,
   ConfigureFinalArmsCustomEventE2ERequest,
   FinalArmsCustomEventE2EEntry,
+  MemoryBudgetWarningPayload,
 } from "@zcode/shared";
 import {
   InternalChannels,
@@ -793,6 +794,14 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.on(PlatformChannels.RendererActionTraceConfigChanged, handler);
     return () =>
       ipcRenderer.removeListener(PlatformChannels.RendererActionTraceConfigChanged, handler);
+  },
+  /** 订阅 Main 推送的内存预算水位告警（S7/N27 看门狗）。 */
+  onMemoryBudgetWarning: (
+    callback: (payload: MemoryBudgetWarningPayload) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, payload: MemoryBudgetWarningPayload) => callback(payload);
+    ipcRenderer.on(PlatformChannels.MemoryBudgetWarning, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.MemoryBudgetWarning, handler);
   },
   /** 发送已结束 Span；使用 send 避免遥测往返阻塞业务。 */
   reportLocalTtftBatch: (batch: import("@zcode/shared").LocalTtftBatch): void =>

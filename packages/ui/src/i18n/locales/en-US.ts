@@ -1532,6 +1532,16 @@ const enUS: Record<string, string> = {
   "app.currentTheme": "Current: {theme}",
   "app.login": "Connect",
   "app.logout": "Disconnect",
+  // S7/U93-N27 memory-budget watchdog (banner + OS notification copy)
+  "app.memoryBudget.warning": "Memory budget running low",
+  "app.memoryBudget.critical":
+    "ZCode is throttling at its memory ceiling — save your work and restart soon",
+  "app.memoryBudget.swapValues": "swap {current}/{limit} MB",
+  "app.memoryBudget.memValues": "memory {current}/{limit} MB",
+  "app.memoryBudget.notificationTitle": "ZCode memory budget nearly exhausted",
+  "app.memoryBudget.notificationBody":
+    "ZCode is approaching its memory ceiling and may freeze. Please restart it soon.",
+  "app.memoryBudget.dismiss": "Dismiss",
   "logout.confirm.title": "Disconnect and restart ZCode?",
   "logout.confirm.descriptionWithRunningSessions":
     "{count} session(s) are currently running. Disconnecting will interrupt them and restart the app.",

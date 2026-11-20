@@ -37,7 +37,7 @@ import type {
   RendererActionTraceBatchV1,
   RendererActionTraceConfigV1,
 } from "./rendererActionTrace.js";
-import type { RendererHeapSample } from "./validation.js";
+import type { MemoryBudgetWarningPayload, RendererHeapSample } from "./validation.js";
 import type {
   CuaAccessibilitySettingsResult,
   OpenCuaPermissionOnboardingOptions,
@@ -956,6 +956,8 @@ export interface IPlatformService {
   onRendererActionTraceConfigChanged?(
     callback: (config: RendererActionTraceConfigV1) => void,
   ): () => void;
+  /** 订阅 Main 推送的内存预算水位告警（S7/N27 看门狗）；Web/手机远控不实现。 */
+  onMemoryBudgetWarning?(callback: (payload: MemoryBudgetWarningPayload) => void): () => void;
   /** Renderer → Main：发送已结束的 ui_action batch；严格旁路、fire-and-forget。 */
   reportRendererActionTraceBatch?(batch: RendererActionTraceBatchV1): void;
   reportLocalTtftBatch?(batch: import("./local-ttft/contract.js").LocalTtftBatch): void;

@@ -61,11 +61,15 @@ async function readAppScopeCounters(): Promise<Record<string, number>> {
   if (!base) {
     return {};
   }
-  const [memCurrent, memPeak, swapCurrent, pids] = await Promise.all([
+  const [memCurrent, memPeak, swapCurrent, pids, memHigh, swapMax] = await Promise.all([
     readFile(`${base}/memory.current`, "utf8").catch(() => null),
     readFile(`${base}/memory.peak`, "utf8").catch(() => null),
     readFile(`${base}/memory.swap.current`, "utf8").catch(() => null),
     readFile(`${base}/pids.current`, "utf8").catch(() => null),
+    // S7/N27：预算看门狗与遥测需要限额本身（memory.high / memory.swap.max），
+    // 才能算「当前/上限」占比。max=immutable 时读不到（无界 scope），键缺席即可。
+    readFile(`${base}/memory.high`, "utf8").catch(() => null),
+    readFile(`${base}/memory.swap.max`, "utf8").catch(() => null),
   ]);
   const counters: Record<string, number> = {};
   const toMib = (raw: string | null): number | undefined => {
@@ -86,6 +90,14 @@ async function readAppScopeCounters(): Promise<Record<string, number>> {
   const swapCurrentMib = toMib(swapCurrent);
   if (swapCurrentMib !== undefined) {
     counters["cgroup.swapCurrentMib"] = swapCurrentMib;
+  }
+  const memHighMib = toMib(memHigh);
+  if (memHighMib !== undefined) {
+    counters["cgroup.memHighMib"] = memHighMib;
+  }
+  const swapMaxMib = toMib(swapMax);
+  if (swapMaxMib !== undefined) {
+    counters["cgroup.swapMaxMib"] = swapMaxMib;
   }
   if (pids !== null) {
     const pidsCurrent = Number(pids.trim());

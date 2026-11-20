@@ -16,6 +16,7 @@ import { BrowserWindow } from "electron";
 import os from "node:os";
 import { getSharedFinalArmsCustomEventE2EController } from "./desktopArmsCustomEvent.js";
 import { desktopRuntimeEnv } from "./desktopRuntimeEnv.js";
+import { evaluateMemoryBudgetSample } from "./memoryBudgetWatchdog.js";
 import { mainMemoryDiagnosticsRegistry } from "./mainMemoryDiagnostics.js";
 import { addAppResourceTotals, type AppResourceTotals } from "./processResourceAppTotals.js";
 import {
@@ -281,6 +282,9 @@ function takeSample(logger?: ResourceLogger): void {
   // N26：触发一次 scope 级 cgroup 读取（异步、至多一个在飞），供本 tick 或
   // 下一 tick 的 [memory] 心跳合并。
   refreshAppScopeResourceCounters();
+  // S7/U93-N27：同一 tick 上评估预算看门狗（读最近一次完成的 cgroup 读数，
+  // 滞后 ≤1 tick，与 [memory] 心跳同源；跃迁经 sink 发射，见 main/index.ts）。
+  evaluateMemoryBudgetSample(latestAppScopeResourceCounters());
 
   const now = Date.now();
   const samples: ProcessRoleSample[] = [];

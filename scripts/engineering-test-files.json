@@ -87,6 +87,7 @@
   "packages/desktop/test/highspeedE2EMockEnv.test.ts",
   "packages/desktop/test/macosReleaseAppDoctor.test.ts",
   "packages/desktop/test/macosUpdateManifest.test.ts",
+  "packages/desktop/test/memoryBudgetWatchdog.test.ts",
   "packages/desktop/test/miseToolchainEnv.test.ts",
   "packages/desktop/test/mobileMessageEvidence.test.ts",
   "packages/desktop/test/mobilePairingDiagnostics.test.ts",

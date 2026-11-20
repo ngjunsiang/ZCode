@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AlertDialogHost } from "@/AlertDialogHost.js";
 import { ConfirmDialogHost } from "@/ConfirmDialog.js";
 import { CuaPermissionObservationAttachment } from "@/cua-permission/CuaPermissionObservationAttachment.js";
+import { MemoryBudgetBanner } from "@/MemoryBudgetBanner.js";
 import { PluginUiBackgroundHost, PluginUiFollowUpDialogHost } from "@/plugin-ui/index.js";
 
 export function RootShell({ children }: { children: ReactNode }) {
@@ -11,6 +12,7 @@ export function RootShell({ children }: { children: ReactNode }) {
     <div className="relative h-dvh">
       {children}
       <CuaPermissionObservationAttachment />
+      <MemoryBudgetBanner />
       <AlertDialogHost />
       <ConfirmDialogHost />
       <PluginUiFollowUpDialogHost />

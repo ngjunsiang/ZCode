@@ -49,6 +49,7 @@ import type {
   RendererTelemetryEventPayload,
   RendererActionTraceBatchV1,
   RendererActionTraceConfigV1,
+  MemoryBudgetWarningPayload,
   RendererHeapSample,
   TelemetryRendererContext,
   TaskNotificationPayload,
@@ -299,6 +300,8 @@ declare global {
       onRendererActionTraceConfigChanged?(
         callback: (config: RendererActionTraceConfigV1) => void,
       ): () => void;
+      /** 订阅内存预算水位告警（S7/N27 看门狗，Main → Renderer 单向推送）。 */
+      onMemoryBudgetWarning?(callback: (payload: MemoryBudgetWarningPayload) => void): () => void;
       /** 发送已结束的 ui_action batch；Main 不返回业务结果。 */
       reportRendererActionTraceBatch?(batch: RendererActionTraceBatchV1): void;
       /** 主窗口 renderer 的 60 秒 heap 读数；单向 send，Main 不回执。 */

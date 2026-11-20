@@ -278,6 +278,8 @@ export const TID_CHAT_VIEW = "chat-view";
 export const TID_CHAT_MESSAGES = "chat-messages";
 /** 聊天输入区上方的错误横幅 */
 export const TID_CHAT_ERROR_BANNER = "chat-error-banner";
+/** 内存预算告警横幅（S7/U93-N27 看门狗，App 根部全局覆盖层） */
+export const TID_MEMORY_BUDGET_BANNER = "memory-budget-banner";
 /** Hook 阻断错误的详情按钮 */
 export const TID_CHAT_ERROR_DETAILS_BUTTON = "chat-error-details-button";
 /** Hook 阻断错误横幅左侧图标 */
