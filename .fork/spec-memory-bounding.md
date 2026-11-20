@@ -1,13 +1,13 @@
 # Spec: Memory bounding for the desktop app tree (ZCodeR)
 
-Status: **approved for S5/S6, draft for S4** (2026-11-12, Author-approved via
-AUQ: "S5+S6 now, S4 spec first"). Owner: fork-local. Follows the AGENTS.md
-spec-first rule. Background evidence chain: sysadmin
-`incidents/2026-11-12-zcode-oomd-victim-selection.md` (OOM #7 = 2026-11-11
-oomd pressure-rule kill of `app-zcode-2615907.scope`, 424 processes; OOM #8 =
-2026-11-12 swap-rule kill of `app-zcode-3339529.scope`, 956 processes, 4.3G
-swap drift over 28h). PATCHES IDs **U88 / N26** reserved for this spec;
-**ADR-038** reserved for the S4 go/no-go decision.
+Status: **approved for S5/S6/S7, draft for S4** (S7 approved 2026-11-20 via
+AUQ: "implement U93/N27 watchdog, banner + OS notification"). Owner:
+fork-local. Follows the AGENTS.md spec-first rule. Background evidence
+chain: sysadmin `incidents/2026-11-12-zcode-oomd-victim-selection.md`
+(OOM #7/#8) and
+`incidents/2026-11-20-zcode-hang10-cap-throttle.md` (hang #10). PATCHES IDs
+**U88 / N26 / U93 / N27** reserved for this spec; **ADR-038** reserved for
+the S4 go/no-go decision; **ADR-040** records the S7 decision.
 
 ## Background (why the app must be bounded)
 
@@ -38,6 +38,15 @@ fork itself must own.
    fork already owns (`ZCodeAgentProcessManager.startClient`); S6 reads facts
    through the existing single telemetry exit (`desktopResourceTelemetry`).
    No new timers, no new writers.
+6. **The app must surface its own budget exhaustion before the kernel
+   freezes it.** Approaching the budget produces a warn/error log and a
+   visible warning (in-app banner; OS notification at the critical tier).
+   Silent throttle-to-freeze is a failed design (hang #10: the app had the
+   warning data in-process but no thresholds).
+7. **The watchdog is observational only.** It reads the same cgroup facts S6
+   reads; it never writes cgroup state and takes no automatic action (no
+   restart, no session killing, no admission refusal). Degrades to a no-op
+   on non-Linux / missing limit files.
 
 ## S5 — agent CLI V8 heap cap (U88, approved)
 
@@ -118,6 +127,80 @@ worth a risky fix in S6. Pruning needs a session-lifecycle signal from host
 to main (a design change): logged here for the next spec cycle, per
 AGENTS.md 先对齐再动手.
 
+## S7 — memory-budget watchdog: surface budget exhaustion before the kernel freezes the app (U93/N27, approved)
+
+**Background.** Hang #10 (2026-11-20 ~06:22–06:41): a 2d9h instance sat at
+its 3G swap cap (668 pids, 421 `sessionRoutes`); a phone-remote agent burst
+(+2.1G RAM / 15 min) pushed the CAPPED scope over `MemoryHigh=4G` while the
+node sat at free-pages 0 → every app process entered synchronous over-high
+reclaim and the UI froze (main pipe lag 16–65 s). No guard fired: oomd's
+pressure rule is blind to throttled-but-not-stalling cold anon (the scope's
+7.4G charged was mostly swapped-out, untouched pages), and kernel OOM never
+fired (swap device only 29% used). The app itself held the warning data
+in-process — S6 reads the scope counters every 10 s — but evaluated no
+thresholds. Decision: ADR-040 (AUQ 2026-11-20: implement watchdog, banner +
+OS notification; no auto-actions).
+
+**Owners.**
+- `processResourceCgroupSource.ts` (N27a): additionally read `memory.high`
+  and `memory.swap.max` → `cgroup.memHighMib` / `cgroup.swapMaxMib` (same
+  async fire-and-forget read policy; absent files → keys absent).
+- Fork-new `packages/desktop/src/main/memoryBudgetWatchdog.ts` (N27): pure
+  threshold state machine `evaluateMemoryBudgetSample(counters, state)`,
+  constants only (no env knobs — the sysadmin wrapper owns the budgets; the
+  watchdog reads whatever limits exist, so budget changes need no code).
+  Wired into the existing 10 s `takeSample` tick (rule 5: no new timers);
+  emissions delivered through a registered sink (main/index.ts: logger +
+  fan-out `PlatformChannels.MemoryBudgetWarning` to all windows via
+  `webContents.send`).
+- Shared protocol: channel entry + zod payload schema + preload
+  `onMemoryBudgetWarning` + `IPlatformService` callback (renderer platform
+  bridge mapping), following the `RendererActionTraceConfigChanged` shape.
+- Renderer (ui): small zustand slice + `MemoryBudgetBanner` mounted at the
+  app root + i18n (en-US / zh-CN). At the critical tier the renderer
+  composes the OS-notification copy (main has no locale context —
+  established constraint in `desktopNotifications.ts`) and requests it via
+  the existing task-notification path; focus suppression and dedupe are
+  inherited from that path.
+
+**Thresholds (constants in N27).**
+- **warning**: `swapCurrentMib ≥ 0.85 × swapMaxMib` sustained 30 consecutive
+  valid samples (≈5 min) → warn log + banner (no OS notification). Swap
+  ratchets monotonically (hang #10 curve: 0 → 3G cap in ~2 days), so this
+  fires roughly half a day to a day before the cap pegs; build-storm flap
+  risk is negligible because `swap.current` barely retreats.
+- **critical**: `memCurrentMib ≥ 0.95 × memHighMib` sustained 12 consecutive
+  valid samples (≈2 min) → error log + critical banner + OS notification
+  request. This is the live-throttle approach; hang #10 crossed it ~4 min
+  before the force-kill.
+- **clear (hysteresis)**: warning clears below 0.80 × swap cap; critical
+  clears below 0.90 × high (falling to warning or normal depending on the
+  swap level). **Every level transition emits** — including demotions
+  (`level: "normal"`, `reason: "resolved"`), which is the renderer's banner
+  clear signal; the OS notification fires once per critical episode and
+  re-arms only after the critical level clears (episode id is minted on
+  escalation, kept across demotions). Samples missing counters or limits
+  neither advance nor reset a streak (no false transitions on read
+  hiccups); only valid samples count.
+
+**Telemetry continuity.** The new limit keys ride the existing `[memory]`
+heartbeat (S6 counters merge), so every log line carries current-vs-limit
+in one record.
+
+**Acceptance scenarios.**
+- E1: swap ≥ 85% cap sustained 5 min → warn log + banner; no OS notification.
+- E2: mem ≥ 95% high sustained 2 min → error log + critical banner + OS
+  notification requested with renderer-localized copy; suppressed while an
+  app window is focused (existing path behavior).
+- E3: levels drop below hysteresis → banner clears, streak state resets; a
+  later escalation re-fires (edge-triggered transitions only).
+- E4: non-Linux / cgroup v1 / missing limit files → watchdog inert; no
+  banner, no logs, new telemetry keys absent.
+- E5: sporadic read failures inside a streak → neither advance nor reset;
+  no emission from invalid samples alone.
+- E6: `[memory]` heartbeat includes `cgroup.memHighMib` / `cgroup.swapMaxMib`
+  matching the scope's actual limit files.
+
 ## S4 — per-session cgroup isolation (spec for review, decision = ADR-038)
 
 **Goal:** one runaway session must die alone; oomd victim selection becomes
@@ -182,6 +265,6 @@ sysadmin S2 app-scope numbers should shrink once sessions carry their own
 caps.
 
 ---
-**Last Updated:** 2026-11-12 · **Status:** S5/S6 approved+implemented on
-patch/3.17.1 · S4 draft for review · **Related:** sysadmin OOM #7/#8 report,
-INTENTS I-13, PATCHES U88/N26
+**Last Updated:** 2026-11-20 · **Status:** S5/S6/S7 implemented on
+patch/3.17.1 · S4 draft for review · **Related:** sysadmin OOM #7/#8 +
+hang #10 reports, INTENTS I-13, PATCHES U88/N26/U93/N27, ADR-040

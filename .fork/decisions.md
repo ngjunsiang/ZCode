@@ -1220,6 +1220,38 @@ family remains outstanding (pre-existing debt, carried).
 
 **Not contributed upstream.** Fork-internal process.
 
+## ADR-040: Memory-budget watchdog — warn, never act {2026-11-20}
+
+Hang #10 (sysadmin `incidents/2026-11-20-zcode-hang10-cap-throttle.md`, 11-20
+06:22–06:41): a 2d9h instance sat at its 3G swap cap; a phone-remote agent
+burst pushed the capped scope over `MemoryHigh=4G` while the node sat at
+free-pages 0 → reclaim-throttle freeze, force-kill, sessions lost. No guard
+fired — oomd's pressure rule is blind to throttled-but-not-stalling cold
+anon, kernel OOM never fired (swap device 29%), and the app held the
+warning data in-process (N26 counters) but evaluated no thresholds.
+
+**Decision (AUQ, user-approved):** implement the U93/N27 watchdog
+(spec-memory-bounding.md S7, intent I-13): main-side threshold state machine
+over the existing 10s sample tick — warning at swap ≥85% cap sustained ~5
+min, critical at mem ≥95% high sustained ~2 min, hysteresis-based clear,
+edge-triggered emission only; surfaces = `[memory]`-adjacent warn/error logs
+(automation-visible in journald), a RootShell banner, and at critical an OS
+notification whose copy is composed renderer-side (main has no locale
+context — desktopNotifications.ts constraint).
+
+**Explicitly rejected:** automatic actions — no auto-restart (the restart
+itself allocates into a throttled scope), no session killing, no admission
+refusal (rule 7). Root causes stay untouched per user's complexity rule:
+persisted-session-store pruning and session-runtime lifetime management are
+features, not patches. Wrapper knob rebalance (swap cap raise /
+MemorySwapHigh) shelved — trades away the #7/#8 oomd-bias protection and
+needs a live validation window; can combine later.
+
+**Numbering:** ADR-038 stays reserved for the S4 per-session-cgroups
+decision; ADR-039 belongs to the pending link-menu backport
+(agent/link-copy-menu/u89, unmerged) — global numbering continues at
+**ADR-041 / U94 / N28** after this row.
+
 ## Retirement record: patch/3.14.3, patch/3.15.1, patch/3.16.1 deleted locally {2026-11-02}
 
 Release-run decision (user-set scope): the three old patch lines are retired

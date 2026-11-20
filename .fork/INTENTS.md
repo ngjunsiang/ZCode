@@ -191,14 +191,20 @@ structurally favor the biggest long-lived leaf cgroup — always the
 it (2026-11-11/12: two correct-but-biased kills, 424/956 processes). ZCodeR
 bounds what it controls: the agent CLI heap is capped so a runaway session
 dies in-process; scope-level cgroup facts ride the `[memory]` heartbeat so
-incidents are diagnosable from app logs alone; and (pending approval) each
-session runs in its own cgroup so oomd kills surgically. The host-side
-guards (budgeted app scope via the desktop entry, memogarden caps) live in
-the sysadmin repo, not here. Provenance: sysadmin
-`incidents/2026-11-12-zcode-oomd-victim-selection.md` (OOM #7/#8).
-- Expressed by: U88, N26
-- Status: S5/S6 landed on patch/3.17.1; S4 (per-session cgroups) spec
-  drafted for review — `.fork/spec-memory-bounding.md`, decision = ADR-038.
+incidents are diagnosable from app logs alone; the app watches its own
+budget (swap-cap reserve / memory-high approach) and surfaces exhaustion
+before the kernel freezes it — visible warning, never automatic action
+(2026-11-20 hang #10: a capped scope throttled to a silent freeze; decision
+ADR-040: warn, never act); and (pending approval) each session runs in its
+own cgroup so oomd kills surgically. The host-side guards (budgeted app
+scope via the desktop entry, memogarden caps) live in the sysadmin repo,
+not here. Provenance: sysadmin `incidents/2026-11-12-zcode-oomd-victim-selection.md`
+(OOM #7/#8) and `incidents/2026-11-20-zcode-hang10-cap-throttle.md` (hang
+#10).
+- Expressed by: U88, N26, U93/N27
+- Status: S5/S6 landed on patch/3.17.1; S7 (budget watchdog) landed
+  2026-11-20; S4 (per-session cgroups) spec drafted for review —
+  `.fork/spec-memory-bounding.md`, decision = ADR-038.
 
 ## Candidates (not yet intentions — decide)
 - C-2 Web/mobile parity for Auto-Resume — blocked on upstream automation RPC
