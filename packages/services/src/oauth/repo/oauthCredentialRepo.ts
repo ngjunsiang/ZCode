@@ -23,6 +23,12 @@ import {
 } from "@zcode/shared";
 import type { ICredentialService } from "../../credential/credential.js";
 import type { LocalCredentialService } from "#src/credential/credentialService.js";
+import {
+  OAuthAccountStore,
+  deriveAccountId,
+  legacyUserInfoKey,
+  type OAuthAccountRef,
+} from "./oauthAccountStore.js";
 import { createServiceLogger } from "../../logger/serviceLogger.js";
 
 const ACTIVE_PROVIDER_KEY = "oauth:active_provider";
@@ -61,6 +67,10 @@ function collectKnownOAuthProviderIds(
     uniqueProviderIds.add(providerId);
   }
   return [...uniqueProviderIds];
+}
+
+function sameRef(left: OAuthAccountRef, right: OAuthAccountRef): boolean {
+  return left.provider === right.provider && left.accountId === right.accountId;
 }
 
 function inferBase64ImageMimeType(decoded: Buffer): string {
@@ -184,12 +194,15 @@ export function isSameOAuthAccountMaterial(
 /** OAuth 凭据仓储：统一 provider 命名空间 */
 export class OAuthCredentialRepo {
   private readonly knownProviderIds: OAuthProviderId[];
+  /** Fork (I-11): per-login account registry under the shared credentials file. */
+  private readonly store: OAuthAccountStore;
 
   constructor(
     private credentialService: ICredentialService,
     options: OAuthCredentialRepoOptions = {},
   ) {
     this.knownProviderIds = collectKnownOAuthProviderIds(options.providerIds);
+    this.store = new OAuthAccountStore(credentialService, { providerIds: this.knownProviderIds });
     this.onCorruptOAuthSessionCleared = options.onCorruptOAuthSessionCleared;
   }
 
@@ -450,7 +463,39 @@ export class OAuthCredentialRepo {
         isZaiOAuthProvider(provider) && profile.rawProfile ? profile.rawProfile : profile,
       ),
     });
-    return this.localStore.updateMany(changes, { expected, assertCurrent });
+    const committed = await this.localStore.updateMany(changes, { expected, assertCurrent });
+    if (committed) {
+      // Fork (I-11): mirror the committed session into the registry. The CAS
+      // write above remains the only writer of the legacy mirror during
+      // upstream flows; this only records the account on the fork side, so a
+      // registry failure must not fail the committed login.
+      await this.syncRegistryAfterSessionCommit(provider, profile);
+    }
+    return committed;
+  }
+
+  private async syncRegistryAfterSessionCommit(
+    provider: OAuthProviderId,
+    profile: OAuthUserProfile,
+  ): Promise<void> {
+    try {
+      const profileRef: OAuthAccountRef = { provider, accountId: deriveAccountId(profile) };
+      const existing = await this.store.resolvePrimaryRefFor(provider);
+      if (existing && sameRef(existing, profileRef)) {
+        // Re-login of the known account: refresh its profile, keep the pointer.
+        await this.store.putAccountProfile(existing, profile);
+        await this.store.activateRef(existing);
+        return;
+      }
+
+      // First login (or a different account of the same provider): adopt the
+      // just-committed mirror tokens as a new registry account and move the
+      // pointer — upstream's "new login replaces the active pointer" semantics.
+      const ref = await this.store.adoptMirrorTokensAsAccount(provider, profile);
+      await this.store.activateRef(ref);
+    } catch (error) {
+      log.warn(undefined, "registry sync after session commit failed", error);
+    }
   }
 
   async clearSession(expected: Readonly<Record<string, string | null>>): Promise<boolean> {
@@ -473,62 +518,80 @@ export class OAuthCredentialRepo {
 
   async loadActiveProvider(): Promise<OAuthProviderId | null> {
     try {
-      return await this.credentialService.load(ACTIVE_PROVIDER_KEY);
+      // Fork (I-11): the registry pointer is the active-login source of truth;
+      // the legacy oauth:active_provider slot is its mirror projection.
+      return (await this.store.resolveActiveRef())?.provider ?? null;
     } catch (error) {
       if (!isCredentialDecryptError(error)) {
         throw error;
       }
 
-      await this.clearCorruptOAuthSession([ACTIVE_PROVIDER_KEY]);
-      return this.credentialService.load(ACTIVE_PROVIDER_KEY);
+      await this.recoverCorruptStoreSession();
+      return null;
     }
   }
 
   async saveActiveProvider(provider: OAuthProviderId | null): Promise<void> {
-    const snapshot = await this.loadSessionSnapshot();
     if (!provider) {
-      if (!(await this.clearSession(snapshot)))
-        throw new Error("OAuth session changed before clearing provider");
+      await this.store.deactivate();
       return;
     }
-    if (
-      !(await this.localStore.updateMany(
-        {
-          [ACTIVE_PROVIDER_KEY]: provider,
-          [SESSION_REVISION_KEY]: randomUUID(),
-        },
-        { expected: snapshot },
-      ))
-    )
-      throw new Error("OAuth session changed before updating provider");
+
+    // Fork (I-11): App login restores into the oauth:* mirror; the registry
+    // pointer is the source of truth, the legacy pointer is its projection.
+    await this.store.activateProvider(provider);
   }
 
   async loadActiveTokenSet(): Promise<OAuthTokenSet | null> {
-    const snapshot = await this.loadSessionSnapshot();
-    const provider = snapshot[ACTIVE_PROVIDER_KEY];
-    return provider ? this.tokenSetFromSnapshot(snapshot, provider) : null;
+    try {
+      const ref = await this.store.resolveActiveRef();
+      if (!ref) {
+        return null;
+      }
+      // Fork (I-11): the live token truth stays in the legacy mirror slots,
+      // bit-identical with upstream single-login reads.
+      return await this.store.readActiveMirrorTokenSet(ref.provider);
+        } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+
+      await this.recoverCorruptStoreSession();
+      return null;
+    }
   }
 
   async saveActiveTokenSet(tokenSet: OAuthTokenSet): Promise<void> {
-    const snapshot = await this.loadSessionSnapshot();
-    const provider = snapshot[ACTIVE_PROVIDER_KEY];
-    if (!provider) throw new Error("保存当前登录 token 前缺少 active provider");
-    if (!(await this.saveTokenSet(provider, tokenSet, snapshot)))
-      throw new Error("OAuth session changed before token update");
+    const ref = await this.store.resolveActiveRef();
+    if (!ref) {
+      throw new Error("保存当前登录 token 前缺少 active provider");
+    }
+    await this.store.putMirrorTokenSet(ref.provider, tokenSet);
   }
 
   async loadActiveUserProfile(): Promise<OAuthUserProfile | null> {
-    const snapshot = await this.loadSessionSnapshot();
-    const provider = snapshot[ACTIVE_PROVIDER_KEY];
-    return provider ? this.profileFromSnapshot(snapshot, provider) : null;
+    try {
+      const ref = await this.store.resolveActiveRef();
+      if (!ref) {
+        return null;
+      }
+      return await this.store.loadAccountProfile(ref);
+        } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+
+      await this.recoverCorruptStoreSession();
+      return null;
+    }
   }
 
   async saveActiveUserProfile(profile: OAuthUserProfile): Promise<void> {
-    const snapshot = await this.loadSessionSnapshot();
-    const provider = snapshot[ACTIVE_PROVIDER_KEY];
-    if (!provider) throw new Error("保存当前登录 user 前缺少 active provider");
-    if (!(await this.saveUserProfile(provider, profile, snapshot)))
-      throw new Error("OAuth session changed before profile update");
+    const ref = await this.store.resolveActiveRef();
+    if (!ref) {
+      throw new Error("保存当前登录 user 前缺少 active provider");
+    }
+    await this.store.putAccountProfile(ref, profile);
   }
 
   async saveLoginAttribution(attribution: OAuthLoginAttribution): Promise<void> {
@@ -590,11 +653,30 @@ export class OAuthCredentialRepo {
   }
 
   async clearActiveSession(expected?: Readonly<Record<string, string | null>>): Promise<boolean> {
-    return this.clearSession(expected ?? (await this.loadSessionSnapshot()));
+    // Fork (I-11): clear through the registry when an account is registered
+    // (removes per-account slots + pointer + active mirror incl. shared JWT);
+    // fall back to upstream's session-wide CAS clear for legacy-only state.
+    const ref = await this.store.resolveActiveRef();
+    if (!ref) {
+      return this.clearSession(expected ?? (await this.loadSessionSnapshot()));
+    }
+    await this.store.clearAccount(ref);
+    return true;
   }
 
   async loadTokenSet(provider: OAuthProviderId): Promise<OAuthTokenSet | null> {
-    return this.tokenSetFromSnapshot(await this.loadSessionSnapshot(), provider);
+    try {
+      // Upstream semantics: direct provider-domain mirror read, no active
+      // pointer required (frozen per-account copies only serve switch flows).
+      return await this.store.readActiveMirrorTokenSet(provider);
+        } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+
+      await this.recoverCorruptStoreSession();
+      return null;
+    }
   }
 
   async loadCachedSessionTokens(
@@ -625,7 +707,18 @@ export class OAuthCredentialRepo {
   }
 
   async loadUserProfile(provider: OAuthProviderId): Promise<OAuthUserProfile | null> {
-    return this.profileFromSnapshot(await this.loadSessionSnapshot(), provider);
+    try {
+      // Upstream semantics: direct provider-domain mirror slot read, no
+      // pointer or registry entry required.
+      return await this.store.loadProviderProfileFromMirror(provider);
+        } catch (error) {
+      if (!isCredentialDecryptError(error)) {
+        throw error;
+      }
+
+      await this.recoverCorruptStoreSession();
+      return null;
+    }
   }
 
   private parseStoredUserProfile(
@@ -675,56 +768,78 @@ export class OAuthCredentialRepo {
   async saveUserProfile(
     provider: OAuthProviderId,
     profile: OAuthUserProfile,
-    expected?: Readonly<Record<string, string | null>>,
+    _expected?: Readonly<Record<string, string | null>>,
   ): Promise<boolean> {
-    // ZAI 后端返回的 data.user 是后续账号态排查与恢复的源数据，
-    // 之前只保存归一化展示字段会丢失 email/name/avatar 原始结构。
-    const persistProfile =
-      isZaiOAuthProvider(provider) && profile.rawProfile ? profile.rawProfile : profile;
+    // Fork (I-11): route by registry state instead of a raw slot write.
+    // The CAS expected guard is intentionally not applied to registry writes:
+    // the registry is single-writer by construction (switch flows serialize).
+    // Returns false only on registry failure so callers keep their retry
+    // semantics (e.g. the BigModel cached-profile migration).
+    try {
+      const ref = await this.store.resolvePrimaryRefFor(provider);
+      if (ref) {
+        await this.store.putAccountProfile(ref, profile);
+        return true;
+      }
 
-    return this.localStore.updateMany(
-      {
-        [userInfoKey(provider)]: JSON.stringify(persistProfile),
-        [SESSION_REVISION_KEY]: randomUUID(),
-      },
-      { expected: expected ?? (await this.loadSessionSnapshot()) },
-    );
+      const pendingRef = await this.store.resolvePendingRefFor(provider);
+      if (pendingRef) {
+        // Second half of the two-phase first login: profile lands, pending
+        // pointer is promoted to a real account.
+        await this.store.putAccountProfile(pendingRef, profile);
+        return true;
+      }
+
+      // First login: tokens are already in the mirror; adopt them into the
+      // registry under this profile's identity.
+      await this.store.adoptMirrorTokensAsAccount(provider, profile);
+      return true;
+    } catch (error) {
+      log.warn(undefined, "registry profile write failed", error);
+      return false;
+    }
   }
 
   async clearUserProfile(provider: OAuthProviderId): Promise<void> {
-    const snapshot = await this.loadSessionSnapshot();
-    if (
-      !(await this.localStore.updateMany(
-        {
-          [userInfoKey(provider)]: null,
-          [SESSION_REVISION_KEY]: randomUUID(),
-        },
-        { expected: snapshot },
-      ))
-    )
-      throw new Error("OAuth session changed before clearing profile");
+    const ref = await this.store.resolvePrimaryRefFor(provider);
+    if (ref) {
+      await this.store.removeAccountProfile(ref);
+      return;
+    }
+
+    await this.credentialService.delete(legacyUserInfoKey(provider));
   }
 
   async clearProvider(provider: OAuthProviderId): Promise<void> {
-    const snapshot = await this.loadSessionSnapshot();
-    if (snapshot[ACTIVE_PROVIDER_KEY] === provider) {
-      await this.clearSession(snapshot);
-      return;
+    const ref = await this.store.resolvePrimaryRefFor(provider);
+    if (ref) {
+      // Active account: clearAccount removes pointer + full mirror (incl.
+      // shared zcodejwttoken). Non-active entries only drop their own registry
+      // data, then stale legacy slots are cleaned so reconcile cannot re-import
+      // zombies.
+      const activeRef = await this.store.resolveActiveRef();
+      const wasActive = activeRef !== null && sameRef(activeRef, ref);
+      await this.store.clearAccount(ref);
+      if (!wasActive) {
+        await this.store.clearStaleLegacyAccountSlots(provider);
+      }
+    } else {
+      // No registry entry: keep the upstream bare cleanup (incl. shared
+      // zcodejwttoken; persistOAuthSession depends on the "clear old provider,
+      // then write new token" ordering).
+      await this.store.clearLegacyProviderSlotsWithJwt(provider);
     }
-    await this.localStore.updateMany(
-      {
-        [accessTokenKey(provider)]: null,
-        [refreshTokenKey(provider)]: null,
-        [userInfoKey(provider)]: null,
-        [SESSION_REVISION_KEY]: randomUUID(),
-      },
-      { expected: snapshot },
-    );
+    // Pending is only a pointer; drop it with the provider to avoid zombie
+    // staged identities.
+    await this.store.clearPendingPointerFor(provider);
   }
 
-  async clearAll(_providers: OAuthProviderId[]): Promise<void> {
-    if (!(await this.clearSession(await this.loadSessionSnapshot())))
-      throw new Error("OAuth session changed before logout");
+  async clearAll(providers: OAuthProviderId[]): Promise<void> {
+    for (const provider of providers) {
+      await this.clearProvider(provider);
+    }
+
+    await this.store.ensureNoActivePointer();
   }
 
   private async clearCorruptOAuthSession(
@@ -742,6 +857,21 @@ export class OAuthCredentialRepo {
     } catch (error) {
       // 派生模型 provider 清理失败不能阻断 OAuth 损坏态恢复。
       // 主 OAuth 凭据已经删除，用户必须能回到可重新登录的未登录态。
+      log.warn(undefined, "clear derived provider keys after corrupt OAuth session failed", error);
+    }
+  }
+
+  private async recoverCorruptStoreSession(): Promise<void> {
+    // Fork (I-11): decryption failure on the registry read surface means the
+    // whole shared credentials file can no longer be trusted locally. Wipe
+    // registry + per-account keys + legacy mirror (an amplified but equivalent
+    // form of upstream single-account logout), then notify derived-credential
+    // cleanup. The snapshot-internal targeted recovery (clearCorruptOAuthSession)
+    // keeps upstream semantics; per-account quarantine is left for later work.
+    await this.store.clearEverything();
+    try {
+      await this.onCorruptOAuthSessionCleared?.(this.knownProviderIds);
+    } catch (error) {
       log.warn(undefined, "clear derived provider keys after corrupt OAuth session failed", error);
     }
   }
