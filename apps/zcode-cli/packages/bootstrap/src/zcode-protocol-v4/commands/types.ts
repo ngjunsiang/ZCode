@@ -274,6 +274,16 @@ export interface V4CommandCoreHost {
 
   // ── 过渡期钩子（legacy 兼容窗口）─────────────────────────
   /**
+   * fork resumeTurn/Auto-Resume (re-landed after the 4.0 merge silently
+   dropped it): pre-turn
+   * model readiness check (credentials/catalog resolution). Currently
+   * implemented by the legacy protocol binder
+   * (ensureSessionModelAvailableForNextTurn); core app will own model
+   * resolution and replace this hook. The declaration was silently dropped
+   * by the 4.0 merge — re-added so resume-turn.ts compiles.
+   */
+  ensureModelReady?(record: V4SessionRecordView): Promise<void>;
+  /**
    * 切模型前由 Agent 进程 Registry 校验目标 Provider。普通模型命令只携带 Selection，
    * 因此这里不能接收或安装 Host 运行快照。
    */
