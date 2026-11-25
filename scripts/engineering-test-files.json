@@ -173,6 +173,7 @@
   "packages/plugin-api/test/version.test.ts",
   "packages/server/test/remoteOfficialPluginAssets.test.ts",
   "packages/server/test/tsupConfig.test.ts",
+  "packages/services/test/agentHeapCapEnv.test.ts",
   "packages/services/test/automationResumePolicy.test.ts",
   "packages/services/test/automationServiceAction.test.ts",
   "packages/services/test/oauthAccountStore.test.ts",
