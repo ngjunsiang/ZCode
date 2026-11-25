@@ -1340,10 +1340,18 @@ pre-release items closed on the running 4.0.0-1 build:
      College) with the active account checked and sorted first; switching
      flips the active entry and the mirror follows; Add account/Disconnect
      present. First real-coexistence exercise of exp-01..04 on 4.0.
-   - **I-1/I-2 resume banner: NOT EXERCISABLE** — no quota-failed session
-     available to render the banner; user skips it now and alerts in future
-     sessions if the resume button is ever missing (standing watch).
-     Logic suites for the family remain green on this tree.
+   - **I-1/I-2 resume family: PASS on a REAL quota failure** (2026-11-26
+     ~00:00, user screenshot — the standing watch from item 2 paid off
+     same-day): `ConversationQuotaBanner` rendered on a genuine 5-hour
+     usage-limit interruption with the **Resume** button, the
+     **Auto-Resume scheduled chip counting down to the server reset
+     boundary** ("✓ Auto-Resume 00:51 · click to cancel" vs reset
+     00:49:31 — host-side ADR-028 scheduling detected the failure and
+     pinned the reset time), and upstream's Upgrade button alongside.
+     First real-quota exercise of the family on 4.0. Auto-resume FIRE +
+     settlement at the reset boundary observed only in log terms — the
+     chip's presence already verifies detection + scheduling; settlement
+     rules (G6) stay covered by N23 suites.
 
 **Not contributed upstream.** Fork-internal process.
 
