@@ -5,7 +5,8 @@ export type SchedulerToMainMessage =
       type: "cron-dispatch-request";
       automationId: string;
       runId: string;
-      prompt: string;
+      /** fork U19/U18: resumeTurn omits prompt (aligned with the wire schema; host reads `?? ""`). */
+      prompt?: string;
       targetTaskId?: string;
       modelSelection?: ModelSelection;
       mode?: string;
