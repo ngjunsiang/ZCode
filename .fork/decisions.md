@@ -1296,8 +1296,18 @@ in-flight fix: the scheduler `prompt` soundness re-fix above); `pnpm lint`
 exit 0 (552 warnings — vendor baseline, none fork-introduced);
 `test:engineering` fork suites: oauthAccountStore 17/17, automation family +
 quota banners + useAutoResume + schedulerMisfire + memoryBudgetWatchdog +
-agentHeapCapEnv — 78/78 after the 0008 retarget; `db:schema:check`
-compatible. **Outstanding before release run:** full engineering manifest
+agentHeapCapEnv — 78/78 after the 0008 retarget; full `test:engineering`
+manifest 187 files passed / 3 skipped, 1233 tests passed / 27 skipped;
+`db:schema:check` compatible; `architecture:check --changed` 0 violations;
+CLI turbo suites 23/24 packages green + dynamic-workflow-runtime 109/109
+solo — two vendor-infra findings: (a) turbo 2 strict env mode strips LC_ALL,
+and this box generates only C/C.utf8 locales, so GNU tar escapes non-ASCII
+names and the site-plugin stage test fails under turbo — run CLI suites with
+`--env-mode=loose` + `LC_ALL=C.utf8` (passes 7/7); (b) the
+dynamic-workflow-runtime sandbox suite has 5s test timeouts that cannot
+survive full-parallel turbo contention on this 16 GB box (49 timeouts at
+load 38–65, 109/109 in 13.4s solo) — run that package solo or accept
+`--concurrency` tuning. Both are box characteristics, not fork regressions. **Outstanding before release run:** full engineering manifest
 (`test:engineering` all 190 files), `architecture:check --changed`,
 `verify:pre-push` with `ZCODE_AFFECTED_TEST_BASE`, PATCHES.md re-anchor,
 desktop smoke of resume + account-switcher families, CLI/CUA suites, and the
