@@ -1,0 +1,56 @@
+{
+ "config": "opt5",
+ "cold": "/home/kureshii/61cssb/parade-state",
+ "b1": {
+  "switches": 12,
+  "blockedMsPerSwitch": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   393,
+   394,
+   396,
+   410,
+   467,
+   689
+  ],
+  "blockedMedian": 393,
+  "blockedMax": 689,
+  "triggerMedian": 564,
+  "triggerCount": 6
+ },
+ "b3": {
+  "firstTriggerMs": "timeout",
+  "revisitTriggerMs": 847,
+  "firstPrepareOffsetMs": null,
+  "revisitPrepareOffsetMs": null,
+  "firstReadDurMs": null,
+  "revisitReadDurMs": null,
+  "coldSpawns": 0
+ },
+ "host": {
+  "listTaskListCount": 2,
+  "gitRefreshCount": 5,
+  "gitRefreshDurMs": [
+   7.9,
+   48,
+   26.6,
+   25.9,
+   30.4
+  ],
+  "readWorkspacePresentationCount": 3,
+  "agentSpawnsTotal": 6
+ },
+ "b2": {
+  "listTaskListCount": 1,
+  "windowMs": 15096,
+  "longtasks": {
+   "count": 26,
+   "sum": 4728,
+   "max": 464
+  }
+ }
+}

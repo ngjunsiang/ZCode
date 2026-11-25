@@ -1,0 +1,48 @@
+{
+ "runs": [
+  {
+   "config": "cold-baseline",
+   "target": "parade-state",
+   "hoverToClickMs": 1182,
+   "firstReadStartedBeforeClick": true,
+   "firstReadOffsetFromHoverMs": -127,
+   "hoverToPresentationReadyMs": 2654,
+   "triggerDeltaWallMs": 9171,
+   "killedAgents": 9,
+   "spawnedAgent": true
+  },
+  {
+   "config": "cold-baseline",
+   "target": "memogarden",
+   "hoverToClickMs": 1094,
+   "firstReadStartedBeforeClick": true,
+   "firstReadOffsetFromHoverMs": -17,
+   "hoverToPresentationReadyMs": 2870,
+   "triggerDeltaWallMs": 9372,
+   "killedAgents": 9,
+   "spawnedAgent": true
+  },
+  {
+   "config": "cold-opt4",
+   "target": "parade-state",
+   "hoverToClickMs": 1182,
+   "firstReadStartedBeforeClick": true,
+   "firstReadOffsetFromHoverMs": 299,
+   "hoverToPresentationReadyMs": 2745,
+   "triggerDeltaWallMs": 9056,
+   "killedAgents": 7,
+   "spawnedAgent": true
+  },
+  {
+   "config": "cold-opt4",
+   "target": "laymanswiki",
+   "hoverToClickMs": 1060,
+   "firstReadStartedBeforeClick": true,
+   "firstReadOffsetFromHoverMs": 199,
+   "hoverToPresentationReadyMs": 2316,
+   "triggerDeltaWallMs": 8940,
+   "killedAgents": 8,
+   "spawnedAgent": true
+  }
+ ]
+}

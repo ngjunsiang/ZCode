@@ -1,0 +1,65 @@
+{
+ "config": "cold-baseline",
+ "targets": [
+  "/home/kureshii/61cssb/parade-state",
+  "/home/kureshii/memogarden"
+ ],
+ "visits": [
+  {
+   "target": "parade-state",
+   "hoverWall": 1791940791328,
+   "wallClick": 1791940792510,
+   "triggerDeltaWall": 9171,
+   "timedOut": false,
+   "hoverToClickMs": 1182,
+   "killedAgents": 9,
+   "prepareStartOffsetMs": 8920,
+   "hostReadOffsetMs": -1309,
+   "readPresentationDurMs": 0,
+   "spawnedAgent": true,
+   "prepareCount": 2,
+   "hostReadCount": 11
+  },
+  {
+   "target": "memogarden",
+   "hoverWall": 1791940810535,
+   "wallClick": 1791940811629,
+   "triggerDeltaWall": 9372,
+   "timedOut": false,
+   "hoverToClickMs": 1094,
+   "killedAgents": 9,
+   "prepareStartOffsetMs": 9223,
+   "hostReadOffsetMs": -1111,
+   "readPresentationDurMs": 0,
+   "spawnedAgent": true,
+   "prepareCount": 2,
+   "hostReadCount": 10
+  }
+ ],
+ "summary": {
+  "triggerMs": [
+   9171,
+   9372
+  ],
+  "prepareStartOffsetMs": [
+   8920,
+   9223
+  ],
+  "hostReadOffsetMs": [
+   -1309,
+   -1111
+  ],
+  "readPresentationDurMs": [
+   0,
+   0
+  ],
+  "spawned": [
+   true,
+   true
+  ],
+  "killed": [
+   9,
+   9
+  ]
+ }
+}

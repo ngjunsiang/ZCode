@@ -1,0 +1,70 @@
+diff --git a/packages/ui/src/hooks/useGitRepository.ts b/packages/ui/src/hooks/useGitRepository.ts
+index fe74620a..2bc351be 100644
+--- a/packages/ui/src/hooks/useGitRepository.ts
++++ b/packages/ui/src/hooks/useGitRepository.ts
+@@ -41,6 +41,14 @@ interface GitLiveDataRefreshInput {
+   workspaceRpcEnabled: boolean;
+ }
+ 
++// bench opt5：同一 workspace 切回时的 Git 状态缓存 TTL；窗口内免一轮 git status 子进程。
++const GIT_STATE_CACHE_TTL_MS = 60_000;
++interface GitStateCacheEntry {
++  input: GitLiveDataRefreshInput;
++  state: GitPaneRepositoryState;
++  at: number;
++}
++
+ export interface GitPaneFileChange extends GitFileChange {
+   diff: GitDiffResult | null;
+ }
+@@ -409,6 +417,8 @@ export function useGitRepository(options: {
+   );
+   const requestVersionRef = useRef(0);
+   const lastLiveRefreshInputRef = useRef<GitLiveDataRefreshInput | null>(null);
++  // bench opt5：per-workspace 最近一次成功刷新的 Git 状态缓存（TTL 内切回直接复用）。
++  const gitStateCacheRef = useRef(new Map<string, GitStateCacheEntry>());
+   const lastFileChangeEntry = null;
+   const lastSummaryEntry = null;
+ 
+@@ -446,6 +456,18 @@ export function useGitRepository(options: {
+       return;
+     }
+ 
++    // bench opt5：TTL 内切回相同输入的 workspace，直接复用上次成功状态，跳过 git 子进程；
++    // refreshToken（文件变更）或 includeExtendedData 变化会因输入不等而照常刷新。
++    const cachedGitState = gitStateCacheRef.current.get(workspaceKey);
++    if (
++      cachedGitState &&
++      Date.now() - cachedGitState.at < GIT_STATE_CACHE_TTL_MS &&
++      !shouldRefreshLiveGitData(cachedGitState.input, nextRefreshInput)
++    ) {
++      setRepositoryState(cachedGitState.state);
++      return;
++    }
++
+     let disposed = false;
+     const requestVersion = requestVersionRef.current + 1;
+     requestVersionRef.current = requestVersion;
+@@ -487,7 +509,7 @@ export function useGitRepository(options: {
+           "last-turn": createEmptyDataset("last-turn", true),
+         };
+ 
+-        setRepositoryState({
++        const nextRepositoryState: GitPaneRepositoryState = {
+           workspaceKey,
+           summary,
+           identity: identity ?? EMPTY_IDENTITY,
+@@ -499,7 +521,13 @@ export function useGitRepository(options: {
+           revision: requestVersion,
+           sourceOptions: buildSourceOptions(datasets),
+           datasets,
++        };
++        gitStateCacheRef.current.set(workspaceKey, {
++          input: nextRefreshInput,
++          state: nextRepositoryState,
++          at: Date.now(),
+         });
++        setRepositoryState(nextRepositoryState);
+       })
+       .catch((error: unknown) => {
+         if (disposed || requestVersionRef.current !== requestVersion) {
