@@ -1334,6 +1334,16 @@ pre-release items closed on the running 4.0.0-1 build:
    carried manual item per ADR-036 precedent — logic-level suites for both
    families (useAutoResume, quota-banner, oauthAccountStore) ran green on
    this exact tree during the port.
+3. **Interactive smoke (user visual pass, 2026-11-25):**
+   - **I-11 account switcher: PASS** (user screenshots) — switcher popup
+     beside the pill lists both coexisting logins (JS + Nanyang Junior
+     College) with the active account checked and sorted first; switching
+     flips the active entry and the mirror follows; Add account/Disconnect
+     present. First real-coexistence exercise of exp-01..04 on 4.0.
+   - **I-1/I-2 resume banner: NOT EXERCISABLE** — no quota-failed session
+     available to render the banner; user skips it now and alerts in future
+     sessions if the resume button is ever missing (standing watch).
+     Logic suites for the family remain green on this tree.
 
 **Not contributed upstream.** Fork-internal process.
 
