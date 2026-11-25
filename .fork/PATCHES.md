@@ -13,6 +13,15 @@ Status values: `planned` → `landed` → (`drifted` → `landed`)* → `superse
 
 **Intent model (ADR-030, 2026-10-23): `.fork/INTENTS.md` is the durable contract; the `Intent` column maps every row to the intentions it expresses. The sync loop is intention-first: on each vendor pull, check each intention against upstream — retire patches it now fulfills, re-express (adapt or rewrite) those it doesn't.**
 
+**4.0 port provenance (ADR-041, 2026-11-25): series source = `origin/patch/3.17.1`
+tip `24d47c7c` onto tag v4.0.0 (`a4b44451`). Zero intent retires; I-11
+re-derived on upstream's snapshot-CAS oauth session (commitSession stays the
+only mirror writer; registry records logins post-commit; switch = freeze →
+atomic commit → activate). Fork migration renumbered to
+`0008_automation_action` (upstream 4.0 took the 0007 slot — replay tests and
+the schema baseline retargeted). Row anchors below are still 3.17.1-era
+symbol hints; re-anchor before the release run.**
+
 **3.16.2 port provenance: series source = `origin/patch/3.15.1` (U1–U67/N1–N19 + ADR-028 U68–U73/N20–N21, merged via PR #87) + charter `f52de4aa` (local, unpushed) + ADR-029 U74–U75/N22–N23 from `hydra/patch/3.15.1` (PR #88). NOT ported from the hydra line: exp-01..04 multi-account experiments (C-1, anchors deleted upstream — re-decide before promoting), the hydra-only AGENTS.md fork addendum (`09f37762`, self-scoped to hydra), `9bdcdd95` (depends on exp-01 registry). Official 3.15.2/3.15.3 ports U54–U58/ADR-025 (hydra/patch/3.15.3-only) are superseded-upstream at 3.16.2 — upstream carries them natively.**
 
 **3.17.1 port provenance (2026-11-02, ADR-036): series replayed from `patch/3.16.2` tip `3908cf15` onto vendor tag `v3.17.1` (`a60ba6a7`). STRUCTURAL CHANGE at 3.17.1: upstream retired the App business UT suites (~1,000 test files deleted; packages/ui/test 1146→115). Fork rows whose assertions lived in those suites (U34/U35/U36/U38/U53/U79-test/U84/U85) are **retired @3.17.1 (test home deleted upstream)** — the code patches they pinned all landed in earlier rows or are carried by fork-new files. Fork-new vitest tests (N5/N8/N11/N13/N14/N17/N18/N21/N24 + U81's re-homed predicate matrix) are re-homed into `scripts/engineering-test-files.json` (the 3.17.1 gate's explicit engineering manifest) — manifest edit registered as U87. U15 re-expressed (version 3.17.1). I-12/U86 re-check: upstream still pins node 24.14.0 (< 24.22.1 first-fixed) — U86 re-applied unchanged.**

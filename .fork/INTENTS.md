@@ -6,10 +6,13 @@ carry an `Intent` column referencing the IDs below. Intentions survive version
 bumps; patches are per-version expressions that can be adapted, rewritten, or
 retired.
 
-**Status lines updated at the 3.17.1 port (ADR-036, 2026-11-02).** The 3.17.1
-vendor retired the App business UT suites; fork behavioral tests are re-homed
-into the engineering manifest (U87). 3.16.3 was reconstructed separately on
-`patch/3.16.3` (ADR-035).
+**Status lines updated at the 4.0 port (ADR-041, 2026-11-25).** v3.17.1 →
+v4.0.0 in one port (worktree `~/ngjunsiang/ZCode-4.0.0`); zero intent
+retires — resumeTurn/autoResume/multi-account remain fork-only, node pins
+still below threshold, force-update gate alive. oauth layer re-derived on
+upstream's snapshot-CAS session; fork migration renumbered 0007 → 0008
+(upstream took the 0007 slot). Row anchors in PATCHES.md still point at
+3.17.1-era symbols pending the release-run re-anchor pass.
 
 ## What ZCodeR is
 

@@ -1220,6 +1220,92 @@ family remains outstanding (pre-existing debt, carried).
 
 **Not contributed upstream.** Fork-internal process.
 
+## ADR-041: 4.0 port — series replay onto patch/4.0.0; oauth CAS re-derivation; 0007 renumber {2026-11-25}
+
+**Context.** Upstream v3.17.1 → v4.0.0 in four vendor squashes (5 commits,
+~7.7k files, +587k/−73k): v3.17.2 (patch), v3.18.0 (monster: design-plugin +
+design-runtime, Extension Host + plugin-api, preinstalled document toolchain,
+session-control package, conversation-session e2e fixtures), v3.18.1/.2
+(patches), v4.0.0 (native helpers, CUA broker-in-process; a version bump, not
+an architecture break — no protocol v5). Pre-port assessment found ZERO
+intent retires (user-confirmed 2026-11-25): no upstream resumeTurn/autoResume
+or multi-account coexistence; node pins still 24.14.0; force-update gate
+alive. Strategy {Confirmed — user-selected 2026-11-25}: cherry-pick with an
+I-11 re-derive fallback; execute the port in the same session.
+
+**Decision.**
+1. `patch/4.0.0` seeded off tag v4.0.0 (`a4b44451`) in worktree
+   `~/ngjunsiang/ZCode-4.0.0`; `.fork/` seeded from the 3.17.1 tip first
+   (fb503e3f), functional commits cherry-picked `-x`, meta squashed last.
+2. **I-11 re-derived, not merged (the fallback fired):** upstream 4.0 rebuilt
+   `oauthCredentialRepo.ts` on a snapshot-CAS session (`commitSession`/
+   `loadSessionSnapshot`/`deleteUnreadable`; single atomic login write) while
+   exp-01 delegates to the account registry. Hybrid kept upstream's CAS
+   surface verbatim (commitSession stays the only legacy-mirror writer in
+   upstream flows; saveTokenSet keeps its CAS boolean) and re-expressed the
+   registry semantics through `OAuthAccountStore`: active-*/mirror reads,
+   profile routing by accountId identity (exp-02 refinement), clear* family,
+   and a `syncRegistryAfterSessionCommit` hook that records the login in the
+   registry after a successful CAS commit (registry failure never fails the
+   committed login). exp-02's multi-step save + rollback is REPLACED by the
+   atomic commit; only its freeze-before-write survives
+   (`freezeCurrentActiveTokens` before commitSession) because the shared
+   `zcodejwttoken` slot is still the one cross-provider conflict. Upstream's
+   new `zai_cn` provider family is carried in KNOWN_OAUTH_PROVIDER_IDS (the
+   corrupt-wipe test expectation extended accordingly).
+3. **Migration renumber:** upstream 4.0 took the `0007` slot
+   (`0007_task_permanent_deletion`); the fork migration renumbered
+   `0008_automation_action` (predicted in the pre-port assessment). The
+   legacy-row replay test retargeted to the new ledger id.
+4. **4.0 settings rework:** toolGrouping* settings are gone upstream — stale
+   hunk context from the ADR-026 pick was dropped (props, handlers, helper
+   params, type fields); `autoResume*` props re-plumbed into
+   AgentBehaviorSectionContent. Upstream unified the composer error banner
+   (`composerBanner` useMemo) — the fork's useQuotaResume/useAutoResume hooks
+   compose alongside it and `showQuotaBanner` gained the quotaResume un-grey
+   term.
+5. **I-7 watch re-checked:** `resolveBusinessCredentialValidationRequest`
+   still natively present (node.ts + nodeApiClient.ts) after the oauth
+   rework. I-12 re-checked: pins unchanged → U86 re-applied; SEA license
+   material re-registered against the regenerated inventory (merged
+   sources.json byte-identical with the 3.17.1 fork version — same recorded
+   sha256).
+6. **U15** (desktop package version pin) upstream-covered at the value level:
+   4.0 added no version field, so the fork pin re-lands as `"4.0.0"`; the
+   separate U15 pick reduced to a no-op and was dropped.
+7. **Repair commit:** the U93 pick's manifest conflict was resolved with a
+   truncated union; restored from the last-good state (189 entries) + the
+   watchdog entry → 190 entries (3036fbfc). U19/U18's `prompt?:` scheduler
+   protocol edit silently lost in an auto-merge — re-applied (both .ts and
+   .d.ts).
+
+**Skipped (content re-derived elsewhere, per ADR-036 precedent):** all
+fork(meta)/port commits (series seeds, ADR records, PATCHES row updates,
+3.17.1-specific re-derives 3a82db9b/62afff17/488332f8/b9deec00 and friends);
+U87's manifest re-homing re-derived during the picks (+ U88/U93 entries).
+68ddb24b's loadCachedSessionTokens registry-key adaptation folded: upstream
+4.0's active-provider guard is satisfied by the mirror freshness invariant.
+
+**Anchors.** PATCHES.md row anchors are last refreshed for 3.17.1 and DO NOT
+reflect 4.0 line numbers (the header states anchors are re-find-by-symbol
+hints, never line numbers). The per-release re-anchor pass is part of the
+release run before any push, same as ADR-037 did for 3.16.3.
+
+**Gates (real results, 2026-11-25):** root `pnpm typecheck` exit 0 (one
+in-flight fix: the scheduler `prompt` soundness re-fix above); `pnpm lint`
+exit 0 (552 warnings — vendor baseline, none fork-introduced);
+`test:engineering` fork suites: oauthAccountStore 17/17, automation family +
+quota banners + useAutoResume + schedulerMisfire + memoryBudgetWatchdog +
+agentHeapCapEnv — 78/78 after the 0008 retarget; `db:schema:check`
+compatible. **Outstanding before release run:** full engineering manifest
+(`test:engineering` all 190 files), `architecture:check --changed`,
+`verify:pre-push` with `ZCODE_AFFECTED_TEST_BASE`, PATCHES.md re-anchor,
+desktop smoke of resume + account-switcher families, CLI/CUA suites, and the
+[/tmp + OOM] single-heavy-job discipline held throughout (typecheck needed
+NODE_OPTIONS=6144 heap after 4.0's package growth).
+
+**Not contributed upstream.** Fork-internal process.
+
 ## ADR-040: Memory-budget watchdog — warn, never act {2026-11-20}
 
 Hang #10 (sysadmin `incidents/2026-11-20-zcode-hang10-cap-throttle.md`, 11-20
