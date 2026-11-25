@@ -1316,6 +1316,27 @@ NODE_OPTIONS=6144 heap after 4.0's package growth).
 
 **Not contributed upstream.** Fork-internal process.
 
+**Debt closure addendum (2026-11-25, post-restart).** The two outstanding
+pre-release items closed on the running 4.0.0-1 build:
+1. **PATCHES re-anchor**: scripted audit of every Anchor cell against the
+   v4.0.0 tree — 66/66 anchor symbols present, 0 partial/gone; the only
+   on-disk-absent F/N rows (N15 terminalOutputReplay test, N16
+   autoResumeSuppressionStore) are historical and correctly marked.
+   Provenance block + sync log updated; no row rewrites needed.
+2. **Runtime verification on the restarted app** (desktop smoke, automatable
+   half): process = `/opt/ZCode/zcode` (4.0.0-1 payload) inside the
+   `app-zcode-managed-*.scope` with the full budget live (MemoryHigh=6G /
+   MemoryMax=8G / MemorySwapMax=4G); `[memory]` heartbeat carries the cgroup
+   facts (`memHighMib=6144/swapMaxMib=4096`) on main + utility_host +
+   renderer; note a stale empty `app-zcode-2127.scope` unit from the
+   pre-restart launch lingers (harmless; GC candidate). The interactive half
+   (quota-interrupted resume click-through, account-switcher popup) remains a
+   carried manual item per ADR-036 precedent — logic-level suites for both
+   families (useAutoResume, quota-banner, oauthAccountStore) ran green on
+   this exact tree during the port.
+
+**Not contributed upstream.** Fork-internal process.
+
 ## ADR-040: Memory-budget watchdog — warn, never act {2026-11-20}
 
 Hang #10 (sysadmin `incidents/2026-11-20-zcode-hang10-cap-throttle.md`, 11-20
