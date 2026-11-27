@@ -1,6 +1,5 @@
-import { TriangleAlertIcon, X } from "lucide-react";
+import { TriangleAlertIcon } from "lucide-react";
 import { TID_MEMORY_BUDGET_BANNER } from "@zcode/shared/test-ids";
-import { Button } from "@/components/ui/button.js";
 import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useMemoryBudgetWarnings } from "@/hooks/useMemoryBudgetWarnings.js";
@@ -9,22 +8,19 @@ import { useMemoryBudgetStore } from "@/store/memoryBudgetStore.js";
 /**
  * S7/U93-N27 内存预算告警横幅。
  *
- * 数据源是 main 看门狗的水位跃迁推送（memoryBudgetStore）；normal/resolved
- * payload 到达即自动消失。手动关闭只对当前剧集生效——升级换新剧集后横幅
- * 重新可见（被忽略的告警不该一直沉默）。挂在 RootShell 顶部作为全局覆盖层。
+ * 数据源是 main 看门狗的水位推送（memoryBudgetStore）——跃迁 + 剧集内
+ * ≈60s 的 stats refresh（U94/N28），swap/memory 数字跟随实时水位；
+ * normal/resolved 推送到达即自动消失。非手动关闭（U94）：没有关闭按钮，
+ * 可见性完全由水位级别决定——预算压力未解除就不该被藏掉。
+ * 挂在 RootShell 顶部作为全局覆盖层。
  */
 export function MemoryBudgetBanner() {
-  // 订阅常驻：即使返回 null，钩子也要挂着接收 main 的水位跃迁（含清除信号）。
+  // 订阅常驻：即使返回 null，钩子也要挂着接收 main 的水位推送（含清除信号）。
   useMemoryBudgetWarnings();
   const warning = useMemoryBudgetStore((state) => state.warning);
-  const dismissedEpisodeId = useMemoryBudgetStore((state) => state.dismissedEpisodeId);
-  const dismiss = useMemoryBudgetStore((state) => state.dismiss);
   const { intl } = useZCodeIntl();
 
   if (!warning || warning.level === "normal") {
-    return null;
-  }
-  if (warning.episodeId === dismissedEpisodeId) {
     return null;
   }
 
@@ -79,15 +75,6 @@ export function MemoryBudgetBanner() {
             </span>
           )}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={intl.formatMessage({ id: "app.memoryBudget.dismiss" })}
-          onClick={() => dismiss(warning.episodeId)}
-        >
-          <X aria-hidden="true" className="size-4" />
-        </Button>
       </div>
     </div>
   );

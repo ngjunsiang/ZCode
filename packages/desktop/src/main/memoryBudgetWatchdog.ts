@@ -23,7 +23,10 @@ import type { MemoryBudgetWarningPayload } from "@zcode/shared";
  * - critical（memCeiling）：memory.current ≥ 95% memory.high 持续 ~2min。这是
  *   实时节流逼近态；#10 在越过 high 后 ~4min 内冻结。
  * 迟滞：warning 低于 80% 才退场；critical 低于 90% 才退场（退到 warning 还是
- * normal 取决于 swap 水位）。只在水位跃迁时发射（edge-triggered）。
+ * normal 取决于 swap 水位）。跃迁即时发射（edge-triggered）；此外剧集内每
+ * 6 个有效样本（≈60s）重发一次当前水位（U94/N28 stats refresh），让横幅
+ * 数字跟随实时水位而不是冻结在触发时刻——剧集号/级别/原因不变，系统通知
+ * 的单集去重不受影响。
  */
 
 export type MemoryBudgetLevel = "normal" | "warning" | "critical";
@@ -35,6 +38,8 @@ const MEM_CLEAR_RATIO = 0.9;
 /** 10s 采样一格：warning ≈5min、critical ≈2min 的持续窗口。 */
 const WARNING_STREAK_SAMPLES = 30;
 const CRITICAL_STREAK_SAMPLES = 12;
+/** 剧集内 stats refresh 节拍：6 个有效样本 ≈60s（与 [memory] 心跳的 ×6 同源）。 */
+const REFRESH_EVERY_N_SAMPLES = 6;
 
 export interface MemoryBudgetWatchdogState {
   level: MemoryBudgetLevel;
@@ -46,6 +51,8 @@ export interface MemoryBudgetWatchdogState {
   episodeId: string;
   /** critical 剧集内是否已请求过系统通知（main 侧 edge 触发的兜底标记）。 */
   criticalNotified: boolean;
+  /** 剧集内距上次发射的有效样本数：攒满 REFRESH_EVERY_N_SAMPLES 重发读数。 */
+  refreshSamples: number;
 }
 
 type BudgetCounters = Record<string, number | undefined>;
@@ -61,6 +68,7 @@ let state: MemoryBudgetWatchdogState = {
   memStreak: 0,
   episodeId: "",
   criticalNotified: false,
+  refreshSamples: 0,
 };
 
 type MemoryBudgetWarningSink = (payload: MemoryBudgetWarningPayload) => void;
@@ -166,7 +174,19 @@ export function evaluateMemoryBudgetSample(counters: BudgetCounters): MemoryBudg
     } else {
       state.criticalNotified = false;
     }
+    // 跃迁发射即时且重置 refresh 节拍（U94/N28：refresh 只服务稳态剧集）。
+    state.refreshSamples = 0;
     emit(level);
+  } else if (level !== "normal" && (hasSwap || hasMem)) {
+    // 剧集内 stats refresh（U94/N28）：只在有效样本上攒计数，每 6 个
+    // （≈60s）以同一剧集号/级别重发最新读数；缺字段样本不推进不发射，
+    // normal 剧集不刷新（横幅本就隐藏）。emit() 回填 lastReadingCounters，
+    // 系统通知去重键（episodeId）不变，不会重复打扰。
+    state.refreshSamples += 1;
+    if (state.refreshSamples >= REFRESH_EVERY_N_SAMPLES) {
+      state.refreshSamples = 0;
+      emit(level);
+    }
   }
 
   return state;
@@ -180,6 +200,7 @@ export function resetMemoryBudgetWatchdogForTest(): void {
     memStreak: 0,
     episodeId: "",
     criticalNotified: false,
+    refreshSamples: 0,
   };
   lastReadingCounters = {};
   sink = null;

@@ -1986,7 +1986,6 @@ const enUS: Record<string, string> = {
   "app.memoryBudget.notificationTitle": "ZCode memory budget nearly exhausted",
   "app.memoryBudget.notificationBody":
     "ZCode is approaching its memory ceiling and may freeze. Please restart it soon.",
-  "app.memoryBudget.dismiss": "Dismiss",
   "logout.confirm.title": "Disconnect and restart ZCode?",
   "logout.confirm.descriptionWithRunningSessions":
     "{count} session(s) are currently running. Disconnecting will interrupt them and restart the app.",

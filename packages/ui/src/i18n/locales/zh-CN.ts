@@ -1813,7 +1813,6 @@ const zhCN: Record<string, string> = {
   "app.memoryBudget.memValues": "内存 {current}/{limit} MB",
   "app.memoryBudget.notificationTitle": "ZCode 内存预算即将耗尽",
   "app.memoryBudget.notificationBody": "ZCode 正在逼近内存上限，可能即将冻结，请尽快重启。",
-  "app.memoryBudget.dismiss": "关闭",
   "logout.confirm.title": "断开连接并重启 ZCode？",
   "logout.confirm.descriptionWithRunningSessions":
     "检测到 {count} 个会话正在运行。断开连接会中断这些会话并重启 App。",
