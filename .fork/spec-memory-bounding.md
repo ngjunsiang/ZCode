@@ -127,7 +127,7 @@ worth a risky fix in S6. Pruning needs a session-lifecycle signal from host
 to main (a design change): logged here for the next spec cycle, per
 AGENTS.md 先对齐再动手.
 
-## S7 — memory-budget watchdog: surface budget exhaustion before the kernel freezes the app (U93/N27, approved)
+## S7 — memory-budget watchdog: surface budget exhaustion before the kernel freezes the app (U93/N27 + U94/N28, approved)
 
 **Background.** Hang #10 (2026-11-20 ~06:22–06:41): a 2d9h instance sat at
 its 3G swap cap (668 pids, 421 `sessionRoutes`); a phone-remote agent burst
