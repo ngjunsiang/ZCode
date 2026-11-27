@@ -182,6 +182,21 @@ OS notification; no auto-actions).
   escalation, kept across demotions). Samples missing counters or limits
   neither advance nor reset a streak (no false transitions on read
   hiccups); only valid samples count.
+- **stats refresh (U94/N28)**: while the level is warning or critical,
+  every 6th valid sample (≈60 s — the same ×6 cadence the `[memory]`
+  heartbeat uses on the 10 s tick) re-emits the current level with the
+  same episode id and reason but fresh current/limit readings, so the
+  banner stats track the live waterline instead of freezing at trigger
+  time. Level transitions still emit immediately and reset the refresh
+  counter; invalid samples neither advance the counter nor emit; the
+  normal level never refreshes. The OS notification stays one per
+  critical episode (all dedupe keys on the unchanged episode id —
+  renderer `lastNotifiedEpisodeRef` and main `criticalNotified` alike).
+- **banner lifecycle (U94/N28)**: the banner is non-dismissible — no
+  close button, no per-episode manual hide (a manually hidden banner
+  would mask an episode that is still active, which is exactly the
+  pressure the banner exists to surface). It renders exactly while the
+  pushed level is warning/critical and hides only on the resolved push.
 
 **Telemetry continuity.** The new limit keys ride the existing `[memory]`
 heartbeat (S6 counters merge), so every log line carries current-vs-limit
@@ -189,6 +204,8 @@ in one record.
 
 **Acceptance scenarios.**
 - E1: swap ≥ 85% cap sustained 5 min → warn log + banner; no OS notification.
+  While the episode stays active, every 6th valid sample (≈60 s) re-emits
+  the same level/episode id with fresh readings (U94/N28 stats refresh).
 - E2: mem ≥ 95% high sustained 2 min → error log + critical banner + OS
   notification requested with renderer-localized copy; suppressed while an
   app window is focused (existing path behavior).
@@ -200,6 +217,11 @@ in one record.
   no emission from invalid samples alone.
 - E6: `[memory]` heartbeat includes `cgroup.memHighMib` / `cgroup.swapMaxMib`
   matching the scope's actual limit files.
+- E7 (U94/N28): banner stats follow the in-episode refresh payloads; the
+  badge is purely state-driven (no manual close — hides only on the
+  resolved push); an invalid sample neither advances the refresh counter
+  nor emits; escalation/demotion resets the refresh counter; critical
+  refreshes do not re-fire the OS notification.
 
 ## S4 — per-session cgroup isolation (spec for review, decision = ADR-038)
 
